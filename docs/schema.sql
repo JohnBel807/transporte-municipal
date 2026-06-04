@@ -1,13 +1,8 @@
 -- =============================================================================
--- TRANSPORTE MUNICIPAL — SCHEMA COMPLETO
--- Ejecutar en orden. Requiere: CREATE EXTENSION IF NOT EXISTS postgis;
+-- SCHEMA SIN POSTGIS — compatible con Railway PostgreSQL 18
 -- =============================================================================
 
-CREATE EXTENSION IF NOT EXISTS postgis;
-CREATE EXTENSION IF NOT EXISTS postgis_topology;
-
--- Zonas (tenant del sistema)
-CREATE TABLE zones (
+CREATE TABLE IF NOT EXISTS zones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
@@ -19,29 +14,30 @@ CREATE TABLE zones (
     max_route_tolerance_m INT NOT NULL DEFAULT 300,
     default_base_fare NUMERIC(10,2) NOT NULL DEFAULT 3200,
     enforce_geofencing BOOLEAN NOT NULL DEFAULT TRUE,
-    geom GEOMETRY(MULTIPOLYGON, 4326),
-    bbox GEOMETRY(POLYGON, 4326),
+    bbox_min_lat FLOAT,
+    bbox_max_lat FLOAT,
+    bbox_min_lng FLOAT,
+    bbox_max_lng FLOAT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     launched_at TIMESTAMPTZ,
     metadata JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_zones_geom ON zones USING GIST(geom);
 
--- Zonas operativas (geofencing)
-CREATE TABLE operational_zones (
+CREATE TABLE IF NOT EXISTS operational_zones (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     zone_type TEXT NOT NULL,
-    geom GEOMETRY(MULTIPOLYGON, 4326) NOT NULL,
+    min_lat FLOAT NOT NULL DEFAULT -90,
+    max_lat FLOAT NOT NULL DEFAULT 90,
+    min_lng FLOAT NOT NULL DEFAULT -180,
+    max_lng FLOAT NOT NULL DEFAULT 180,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     metadata JSONB DEFAULT '{}'
 );
-CREATE INDEX idx_opzones_gist ON operational_zones USING GIST(geom);
 
--- Usuarios
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL UNIQUE,
     phone TEXT NOT NULL UNIQUE,
@@ -54,10 +50,9 @@ CREATE TABLE users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
--- Pasajeros
-CREATE TABLE passengers (
+CREATE TABLE IF NOT EXISTS passengers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     wallet_balance NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -66,8 +61,7 @@ CREATE TABLE passengers (
     total_trips INT NOT NULL DEFAULT 0
 );
 
--- Conductores
-CREATE TABLE drivers (
+CREATE TABLE IF NOT EXISTS drivers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     driver_type TEXT NOT NULL CHECK (driver_type IN ('taxi','particular','colectivo')),
@@ -81,8 +75,7 @@ CREATE TABLE drivers (
     zone_id UUID REFERENCES zones(id)
 );
 
--- Vehículos
-CREATE TABLE vehicles (
+CREATE TABLE IF NOT EXISTS vehicles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     driver_id UUID NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
     plate TEXT NOT NULL UNIQUE,
@@ -96,8 +89,7 @@ CREATE TABLE vehicles (
     last_inspection TIMESTAMPTZ
 );
 
--- Rutas de colectivo
-CREATE TABLE colectivo_routes (
+CREATE TABLE IF NOT EXISTS colectivo_routes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     driver_id UUID NOT NULL REFERENCES drivers(id),
     route_name TEXT NOT NULL,
@@ -110,54 +102,33 @@ CREATE TABLE colectivo_routes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_routes_driver ON colectivo_routes(driver_id);
-CREATE INDEX idx_routes_status ON colectivo_routes(status) WHERE status = 'activa';
+CREATE INDEX IF NOT EXISTS idx_routes_status ON colectivo_routes(status);
 
--- Waypoints
-CREATE TABLE route_waypoints (
+CREATE TABLE IF NOT EXISTS route_waypoints (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     route_id UUID NOT NULL REFERENCES colectivo_routes(id) ON DELETE CASCADE,
     sequence_order INT NOT NULL,
     place_name TEXT NOT NULL,
     latitude FLOAT NOT NULL,
     longitude FLOAT NOT NULL,
-    geo_point GEOGRAPHY(POINT, 4326),
     is_terminal BOOLEAN NOT NULL DEFAULT FALSE,
     estimated_wait_min INT NOT NULL DEFAULT 0,
     zone_id UUID REFERENCES zones(id)
 );
-CREATE INDEX idx_waypoints_route ON route_waypoints(route_id, sequence_order);
-CREATE INDEX idx_waypoints_gist ON route_waypoints USING GIST(geo_point);
+CREATE INDEX IF NOT EXISTS idx_waypoints_route ON route_waypoints(route_id, sequence_order);
 
--- Corredores de ruta
-CREATE TABLE route_corridors (
+CREATE TABLE IF NOT EXISTS route_corridors (
     route_id UUID PRIMARY KEY REFERENCES colectivo_routes(id) ON DELETE CASCADE,
-    full_linestring GEOMETRY(LINESTRING, 4326) NOT NULL,
-    corridor_geom GEOMETRY(POLYGON, 4326) NOT NULL,
-    bbox GEOMETRY(POLYGON, 4326) NOT NULL,
+    min_lat FLOAT NOT NULL,
+    max_lat FLOAT NOT NULL,
+    min_lng FLOAT NOT NULL,
+    max_lng FLOAT NOT NULL,
     tolerance_m INT NOT NULL DEFAULT 300,
     zone_id UUID REFERENCES zones(id),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX idx_corridors_gist ON route_corridors USING GIST(corridor_geom);
 
--- Segmentos de ruta
-CREATE TABLE route_segments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    route_id UUID NOT NULL REFERENCES colectivo_routes(id) ON DELETE CASCADE,
-    from_waypoint UUID NOT NULL REFERENCES route_waypoints(id),
-    to_waypoint UUID NOT NULL REFERENCES route_waypoints(id),
-    seq_from INT NOT NULL,
-    seq_to INT NOT NULL,
-    geom GEOMETRY(LINESTRING, 4326) NOT NULL,
-    distance_m FLOAT NOT NULL,
-    CONSTRAINT chk_direction CHECK (seq_to > seq_from)
-);
-CREATE INDEX idx_segments_route ON route_segments(route_id, seq_from);
-CREATE INDEX idx_segments_gist ON route_segments USING GIST(geom);
-
--- Horarios de ruta
-CREATE TABLE route_schedules (
+CREATE TABLE IF NOT EXISTS route_schedules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     route_id UUID NOT NULL REFERENCES colectivo_routes(id) ON DELETE CASCADE,
     day_of_week TEXT NOT NULL,
@@ -166,11 +137,11 @@ CREATE TABLE route_schedules (
     is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
--- Estado en vivo
-CREATE TABLE route_live_state (
+CREATE TABLE IF NOT EXISTS route_live_state (
     route_id UUID PRIMARY KEY REFERENCES colectivo_routes(id) ON DELETE CASCADE,
     driver_id UUID NOT NULL REFERENCES drivers(id),
-    current_position GEOGRAPHY(POINT, 4326) NOT NULL,
+    current_lat FLOAT NOT NULL DEFAULT 0,
+    current_lng FLOAT NOT NULL DEFAULT 0,
     current_segment_seq INT NOT NULL DEFAULT 0,
     heading SMALLINT,
     speed_kmh SMALLINT NOT NULL DEFAULT 0,
@@ -180,10 +151,8 @@ CREATE TABLE route_live_state (
     zone_id UUID REFERENCES zones(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_live_gist ON route_live_state USING GIST(current_position);
 
--- Viajes
-CREATE TABLE trips (
+CREATE TABLE IF NOT EXISTS trips (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     passenger_id UUID NOT NULL REFERENCES passengers(id),
     driver_id UUID NOT NULL REFERENCES drivers(id),
@@ -206,11 +175,9 @@ CREATE TABLE trips (
     duration_minutes INT,
     distance_km FLOAT
 );
-CREATE INDEX idx_trips_passenger ON trips(passenger_id, status);
-CREATE INDEX idx_trips_driver ON trips(driver_id, status);
+CREATE INDEX IF NOT EXISTS idx_trips_passenger ON trips(passenger_id, status);
 
--- Historial de viajes
-CREATE TABLE trip_history (
+CREATE TABLE IF NOT EXISTS trip_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     route_id UUID NOT NULL REFERENCES colectivo_routes(id),
     driver_id UUID NOT NULL REFERENCES drivers(id),
@@ -223,13 +190,11 @@ CREATE TABLE trip_history (
     waypoints_covered INT,
     avg_speed_kmh FLOAT,
     zone_id UUID REFERENCES zones(id),
-    date DATE GENERATED ALWAYS AS (started_at::DATE) STORED
+    trip_date DATE
 );
-CREATE INDEX idx_th_date_province ON trip_history(date, province);
-CREATE INDEX idx_th_zone_date ON trip_history(zone_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_th_date ON trip_history(trip_date DESC);
 
--- Calificaciones
-CREATE TABLE ratings (
+CREATE TABLE IF NOT EXISTS ratings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     trip_id UUID NOT NULL REFERENCES trips(id),
     rater_id UUID NOT NULL REFERENCES users(id),
@@ -241,8 +206,7 @@ CREATE TABLE ratings (
     CONSTRAINT uq_rating_per_rater_per_trip UNIQUE (trip_id, rater_id)
 );
 
--- Pagos
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     trip_id UUID NOT NULL REFERENCES trips(id),
     passenger_id UUID NOT NULL REFERENCES passengers(id),
@@ -254,24 +218,22 @@ CREATE TABLE payments (
     processed_at TIMESTAMPTZ
 );
 
--- Tokens de refresco
-CREATE TABLE refresh_tokens (
+CREATE TABLE IF NOT EXISTS refresh_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash TEXT NOT NULL UNIQUE,
     family_id UUID NOT NULL,
     device_info TEXT,
-    ip_address INET,
+    ip_address TEXT,
     issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
     rotated_at TIMESTAMPTZ
 );
-CREATE INDEX idx_refresh_token_hash ON refresh_tokens(token_hash);
-CREATE INDEX idx_refresh_token_user ON refresh_tokens(user_id) WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_refresh_token_hash ON refresh_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_refresh_token_user ON refresh_tokens(user_id) WHERE revoked_at IS NULL;
 
--- Suscripciones de pasajeros a rutas
-CREATE TABLE passenger_route_subscriptions (
+CREATE TABLE IF NOT EXISTS passenger_route_subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     passenger_id UUID NOT NULL REFERENCES passengers(id) ON DELETE CASCADE,
     route_id UUID NOT NULL REFERENCES colectivo_routes(id) ON DELETE CASCADE,
@@ -283,10 +245,8 @@ CREATE TABLE passenger_route_subscriptions (
     expires_at TIMESTAMPTZ,
     UNIQUE (passenger_id, route_id, waypoint_id)
 );
-CREATE INDEX idx_subs_route_waypoint ON passenger_route_subscriptions(route_id, waypoint_id) WHERE is_active;
 
--- Notificaciones
-CREATE TABLE notification_log (
+CREATE TABLE IF NOT EXISTS notification_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     passenger_id UUID NOT NULL REFERENCES passengers(id),
     route_id UUID NOT NULL,
@@ -296,8 +256,7 @@ CREATE TABLE notification_log (
     sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Historial de velocidad por segmento
-CREATE TABLE segment_speed_history (
+CREATE TABLE IF NOT EXISTS segment_speed_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     route_id UUID NOT NULL REFERENCES colectivo_routes(id),
     seq_from INT NOT NULL,
@@ -310,18 +269,16 @@ CREATE TABLE segment_speed_history (
     UNIQUE (route_id, seq_from, seq_to, hour_of_day, day_of_week)
 );
 
--- Ubicación en tiempo real de conductores
-CREATE TABLE drivers_location (
+CREATE TABLE IF NOT EXISTS drivers_location (
     driver_id UUID PRIMARY KEY REFERENCES drivers(id) ON DELETE CASCADE,
-    position GEOGRAPHY(POINT, 4326) NOT NULL,
+    lat FLOAT NOT NULL DEFAULT 0,
+    lng FLOAT NOT NULL DEFAULT 0,
     heading SMALLINT,
     speed_kmh SMALLINT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_drivers_location_gist ON drivers_location USING GIST(position);
 
--- Acciones de administrador
-CREATE TABLE admin_actions (
+CREATE TABLE IF NOT EXISTS admin_actions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     admin_id UUID NOT NULL REFERENCES users(id),
     entity_type TEXT NOT NULL,
@@ -331,17 +288,21 @@ CREATE TABLE admin_actions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Vista de rutas activas en tiempo real
 CREATE OR REPLACE VIEW active_routes_live AS
 SELECT
-    cr.id AS route_id, cr.route_name, cr.base_fare,
-    rls.current_position,
-    ST_X(rls.current_position::GEOMETRY) AS driver_lng,
-    ST_Y(rls.current_position::GEOMETRY) AS driver_lat,
-    rls.heading, rls.speed_kmh, rls.current_segment_seq,
+    cr.id AS route_id,
+    cr.route_name,
+    cr.base_fare,
+    rls.current_lng AS driver_lng,
+    rls.current_lat AS driver_lat,
+    rls.heading,
+    rls.speed_kmh,
+    rls.current_segment_seq,
     rw_next.place_name AS next_stop_name,
-    rls.eta_next_stop_sec, rls.passengers_aboard,
-    v.capacity, v.capacity - rls.passengers_aboard AS seats_available,
+    rls.eta_next_stop_sec,
+    rls.passengers_aboard,
+    v.capacity,
+    v.capacity - rls.passengers_aboard AS seats_available,
     rls.updated_at,
     CASE
         WHEN rls.updated_at > NOW() - INTERVAL '10 seconds' THEN 'live'
@@ -356,33 +317,37 @@ JOIN vehicles v ON v.driver_id = d.id AND v.is_active
 WHERE cr.status = 'activa'
   AND rls.updated_at > NOW() - INTERVAL '2 minutes';
 
--- Función para reconstruir el corredor de una ruta
 CREATE OR REPLACE FUNCTION rebuild_route_corridor(p_route_id UUID, p_tolerance_m INT DEFAULT 300)
 RETURNS VOID LANGUAGE plpgsql AS $$
-DECLARE v_line GEOMETRY;
+DECLARE
+    v_min_lat FLOAT; v_max_lat FLOAT;
+    v_min_lng FLOAT; v_max_lng FLOAT;
 BEGIN
-    SELECT ST_MakeLine(geo_point::GEOMETRY ORDER BY sequence_order)
-    INTO v_line FROM route_waypoints WHERE route_id = p_route_id;
-    IF v_line IS NULL OR ST_NPoints(v_line) < 2 THEN
-        RAISE EXCEPTION 'La ruta % necesita al menos 2 waypoints', p_route_id;
+    SELECT MIN(latitude), MAX(latitude), MIN(longitude), MAX(longitude)
+    INTO v_min_lat, v_max_lat, v_min_lng, v_max_lng
+    FROM route_waypoints WHERE route_id = p_route_id;
+
+    IF v_min_lat IS NULL THEN
+        RAISE EXCEPTION 'La ruta % no tiene waypoints', p_route_id;
     END IF;
-    INSERT INTO route_corridors (route_id, full_linestring, corridor_geom, bbox, tolerance_m)
-    VALUES (
-        p_route_id, v_line,
-        ST_Buffer(v_line::GEOGRAPHY, p_tolerance_m)::GEOMETRY,
-        ST_Envelope(v_line), p_tolerance_m
-    )
+
+    INSERT INTO route_corridors (route_id, min_lat, max_lat, min_lng, max_lng, tolerance_m)
+    VALUES (p_route_id, v_min_lat, v_max_lat, v_min_lng, v_max_lng, p_tolerance_m)
     ON CONFLICT (route_id) DO UPDATE
-        SET full_linestring = EXCLUDED.full_linestring,
-            corridor_geom   = EXCLUDED.corridor_geom,
-            bbox            = EXCLUDED.bbox,
-            tolerance_m     = EXCLUDED.tolerance_m,
-            updated_at      = NOW();
+        SET min_lat = EXCLUDED.min_lat, max_lat = EXCLUDED.max_lat,
+            min_lng = EXCLUDED.min_lng, max_lng = EXCLUDED.max_lng,
+            tolerance_m = EXCLUDED.tolerance_m, updated_at = NOW();
 END;
 $$;
 
--- Datos iniciales: zonas operativas
-INSERT INTO zones (slug, name, center_lat, center_lng, default_zoom, enforce_geofencing) VALUES
-    ('velez',    'Provincia de Vélez',    6.013, -73.677, 12, TRUE),
-    ('ricaurte', 'Provincia de Ricaurte', 5.603, -74.105, 12, TRUE)
+INSERT INTO zones (slug, name, center_lat, center_lng, default_zoom,
+                   bbox_min_lat, bbox_max_lat, bbox_min_lng, bbox_max_lng)
+VALUES
+    ('velez',    'Provincia de Vélez',    6.013, -73.677, 12, 5.80, 6.20, -73.90, -73.50),
+    ('ricaurte', 'Provincia de Ricaurte', 5.603, -74.105, 12, 5.40, 5.80, -74.30, -73.90)
 ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO operational_zones (name, zone_type, min_lat, max_lat, min_lng, max_lng)
+VALUES
+    ('Vélez',    'provincia', 5.80, 6.20, -73.90, -73.50),
+    ('Ricaurte', 'provincia', 5.40, 5.80, -74.30, -73.90);

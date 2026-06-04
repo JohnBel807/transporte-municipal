@@ -17,8 +17,8 @@ COPY --chown=appuser:appgroup app/ ./app/
 COPY --chown=appuser:appgroup alembic/ ./alembic/
 COPY --chown=appuser:appgroup alembic.ini .
 COPY --chown=appuser:appgroup scripts/ ./scripts/
+RUN chmod +x scripts/entrypoint.sh
 USER appuser
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD curl -f http://localhost:${PORT}/health || exit 1
 EXPOSE ${PORT}
 ENTRYPOINT ["scripts/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

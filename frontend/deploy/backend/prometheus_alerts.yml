@@ -1,0 +1,159 @@
+# prometheus_alerts.yml
+#
+# Reglas de alerta para el sistema de transporte municipal.
+# Importar en prometheus.yml:
+#   rule_files:
+#     - prometheus_alerts.yml
+#
+# Cada alerta tiene:
+#   · for: tiempo que debe cumplirse antes de disparar (evita falsos positivos)
+#   · severity: page (acción inmediata) | warning (revisar pronto) | info
+#   · zone_slug en los labels para aislar problemas por zona
+
+groups:
+
+  # ── Disponibilidad del sistema ──────────────────────────────────────────────
+  - name: availability
+    rules:
+
+      - alert: BackendDown
+        expr: up{job="transporte-backend"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "Backend caído"
+          description: "El backend no responde desde hace más de 1 minuto."
+
+      - alert: HighErrorRate
+        # Más del 5% de requests con 5xx en los últimos 5 minutos
+        expr: |
+          sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (zone_slug)
+          /
+          sum(rate(http_requests_total[5m])) by (zone_slug)
+          > 0.05
+        for: 3m
+        labels:
+          severity: page
+        annotations:
+          summary: "Tasa de errores alta en {{ $labels.zone_slug }}"
+          description: >
+            {{ $value | humanizePercentage }} de requests con error 5xx
+            en la zona {{ $labels.zone_slug }}.
+
+  # ── Latencia ─────────────────────────────────────────────────────────────────
+  - name: latency
+    rules:
+
+      - alert: HighP95Latency
+        # Percentil 95 de latencia > 1 segundo
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, zone_slug)
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia P95 alta en {{ $labels.zone_slug }}"
+          description: >
+            El 95% de los requests en {{ $labels.zone_slug }}
+            tardan más de {{ $value | humanizeDuration }}.
+
+      - alert: DashboardQuerySlow
+        # La query del dashboard tarda más de 500ms
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(db_query_duration_seconds_bucket{query_name="get_dashboard"}[5m]))
+            by (le, zone_slug)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Query de dashboard lenta en {{ $labels.zone_slug }}"
+          description: >
+            La query get_dashboard en {{ $labels.zone_slug }} tarda
+            {{ $value | humanizeDuration }} en P95. Revisar índices.
+
+  # ── Tiempo real ───────────────────────────────────────────────────────────────
+  - name: realtime
+    rules:
+
+      - alert: NoPositionUpdates
+        # Sin actualizaciones de posición en 2 minutos durante horario operativo
+        expr: |
+          sum(rate(position_updates_total[2m])) by (zone_slug) == 0
+          and
+          hour() >= 6 and hour() <= 22
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sin actualizaciones GPS en {{ $labels.zone_slug }}"
+          description: >
+            No se han recibido actualizaciones de posición en
+            {{ $labels.zone_slug }} en los últimos 2 minutos.
+            Verificar conectividad de conductores.
+
+      - alert: ETAConfidenceDegraded
+        # Más del 60% de los ETAs son "estimada" (sin historial suficiente)
+        expr: |
+          sum(rate(eta_confidence_total{confidence="estimada"}[10m])) by (zone_slug)
+          /
+          sum(rate(eta_confidence_total[10m])) by (zone_slug)
+          > 0.6
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Calidad de ETA degradada en {{ $labels.zone_slug }}"
+          description: >
+            El {{ $value | humanizePercentage }} de los ETAs en
+            {{ $labels.zone_slug }} usan velocidad estimada.
+            El historial de segmentos puede ser insuficiente.
+
+      - alert: WebSocketConnectionLeak
+        # Más de 500 conexiones WS activas (posible fuga de recursos)
+        expr: sum(ws_connections_active) by (zone_slug) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Posible fuga de conexiones WS en {{ $labels.zone_slug }}"
+          description: >
+            {{ $value }} conexiones WebSocket activas en {{ $labels.zone_slug }}.
+            Verificar que el cleanup de desconexión funciona.
+
+  # ── Base de datos ─────────────────────────────────────────────────────────────
+  - name: database
+    rules:
+
+      - alert: DatabaseErrors
+        expr: |
+          sum(rate(db_errors_total[5m])) by (zone_slug, operation) > 0.1
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "Errores de BD en {{ $labels.zone_slug }}"
+          description: >
+            Operación {{ $labels.operation }} fallando en {{ $labels.zone_slug }}.
+            Tasa: {{ $value | humanize }} errores/segundo.
+
+  # ── Seguridad ─────────────────────────────────────────────────────────────────
+  - name: security
+    rules:
+
+      - alert: AuthRejectionSpike
+        # Más de 10 rechazos de auth por minuto — posible ataque de fuerza bruta
+        expr: |
+          sum(rate(auth_rejections_total[1m])) by (zone_slug, reason) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Spike de rechazos de autenticación en {{ $labels.zone_slug }}"
+          description: >
+            {{ $value | humanize }} rechazos/segundo por {{ $labels.reason }}
+            en {{ $labels.zone_slug }}.

@@ -206,7 +206,7 @@ export function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.top_routes.map((r, i) => (
+                    {data.top_routes.map((r: RouteDemandsRow, i: number) => (
                       <RouteRow key={r.route_id} route={r} rank={i + 1}/>
                     ))}
                     {data.top_routes.length === 0 && (
@@ -245,7 +245,7 @@ export function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.vehicles_summary.map((v) => (
+                    {data.vehicles_summary.map((v: VehicleDayRow) => (
                       <VehicleRow key={v.vehicle_id} vehicle={v}/>
                     ))}
                     {data.vehicles_summary.length === 0 && (

@@ -138,3 +138,93 @@ async def manage_driver_status(
         "affected_routes": affected_routes,
         "message": f"Conductor {'bloqueado' if is_blocking else 'desbloqueado'}. {affected_routes} ruta(s) afectada(s).",
     }
+    
+class DriverCreateRequest(BaseModel):
+        full_name:        str = Field(min_length=3, max_length=100)
+        email:            str = Field(min_length=5, max_length=100)
+        phone:            str = Field(min_length=7, max_length=20)
+        password:         str = Field(min_length=6, max_length=50)
+        driver_type:      str = Field(pattern="^(taxi|particular|colectivo)$")
+        license_number:   str = Field(min_length=3, max_length=30)
+        license_category: str = Field(min_length=1, max_length=10)
+        zone_slug:        str = Field(default="velez")
+        plate:            str = Field(min_length=5, max_length=10)
+        brand:            str = Field(min_length=2, max_length=50)
+        model:            str = Field(min_length=1, max_length=50)
+        year:             int = Field(ge=2000, le=2030)
+        capacity:         int = Field(ge=1, le=60)
+        color:            str = Field(min_length=2, max_length=30)
+        vehicle_type:     str = Field(pattern="^(sedan|van|bus|moto)$")
+
+
+class DriverCreateResponse(BaseModel):
+    user_id:    str
+    driver_id:  str
+    vehicle_id: str
+    full_name:  str
+    email:      str
+    message:    str
+
+
+@router.post("/drivers", response_model=DriverCreateResponse, status_code=201)
+async def create_driver(
+    body:  DriverCreateRequest,
+    pool:  Pool          = Depends(get_pool),
+    admin: DriverContext = Depends(get_current_admin),
+) -> DriverCreateResponse:
+    password_hash = _bcrypt.hashpw(
+        body.password.encode(), _bcrypt.gensalt()
+    ).decode()
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            existing = await conn.fetchval(
+                "SELECT id FROM users WHERE email=$1 OR phone=$2",
+                body.email, body.phone,
+            )
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ya existe un usuario con ese email o teléfono"
+                )
+
+            zone_id = await conn.fetchval(
+                "SELECT id FROM zones WHERE slug=$1 AND is_active=TRUE",
+                body.zone_slug,
+            )
+            if not zone_id:
+                raise HTTPException(status_code=404, detail="Zona no encontrada")
+
+            user_id = await conn.fetchval(
+                """INSERT INTO users
+                   (email, phone, password_hash, full_name, role, is_active, zone_id)
+                   VALUES ($1,$2,$3,$4,'conductor',TRUE,$5) RETURNING id""",
+                body.email, body.phone, password_hash, body.full_name, zone_id,
+            )
+
+            driver_id = await conn.fetchval(
+                """INSERT INTO drivers
+                   (user_id, driver_type, license_number, license_category,
+                    status, is_verified, zone_id)
+                   VALUES ($1,$2,$3,$4,'disponible',TRUE,$5) RETURNING id""",
+                user_id, body.driver_type, body.license_number,
+                body.license_category, zone_id,
+            )
+
+            vehicle_id = await conn.fetchval(
+                """INSERT INTO vehicles
+                   (driver_id, plate, brand, model, year,
+                    capacity, color, vehicle_type, is_active)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE) RETURNING id""",
+                driver_id, body.plate.upper(), body.brand, body.model,
+                body.year, body.capacity, body.color, body.vehicle_type,
+            )
+
+    return DriverCreateResponse(
+        user_id=str(user_id),
+        driver_id=str(driver_id),
+        vehicle_id=str(vehicle_id),
+        full_name=body.full_name,
+        email=body.email,
+        message=f"Conductor {body.full_name} registrado correctamente",
+    )

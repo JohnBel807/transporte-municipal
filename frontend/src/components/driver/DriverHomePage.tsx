@@ -98,7 +98,17 @@ export function DriverHomePage() {
 
       {/* Contenido */}
       <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-
+        {/* Botón nueva ruta */}
+        {!activeRoute && (
+          <button
+            onClick={() => navigate('/driver/routes/new')}
+            className="w-full py-3 border border-teal-500/30 rounded-xl
+                      text-sm text-teal-400 font-medium
+                      hover:bg-teal-500/10 transition"
+          >
+            + Crear nueva ruta
+          </button>
+        )}
         {/* Banner ruta activa */}
         {activeRoute && (
           <div className="bg-teal-500/10 border border-teal-500/30

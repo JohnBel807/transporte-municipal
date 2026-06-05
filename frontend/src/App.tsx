@@ -6,6 +6,7 @@ import { DashboardPage }     from './components/map/DashboardPage'
 import { ReportsPage }       from './components/reports/ReportsPage'
 import { DriverRegisterPage } from './components/admin/DriverRegisterPage'
 import { DriverHomePage }    from './components/driver/DriverHomePage'
+import { DriverRouteCreatePage } from './components/driver/DriverRouteCreatePage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 0 } },
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="/login"     element={<LoginPage />} />
           <Route path="/"          element={<RoleRedirect />} />
 
+          <Route path="/driver/routes/new" element={<RequireAuth><DriverRouteCreatePage /></RequireAuth>}/>
           {/* Rutas de administrador */}
           <Route path="/dashboard" element={
             <RequireAuth><DashboardPage /></RequireAuth>

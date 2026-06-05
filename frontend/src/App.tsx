@@ -36,6 +36,7 @@ export default function App() {
             <RequireAuth><ReportsPage /></RequireAuth>
           }/>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/drivers/new" element={<RequireAuth><DriverRegisterPage /></RequireAuth>}/>
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
@@ -43,6 +44,3 @@ export default function App() {
 }
 
 // Dentro de <Routes> agrega:
-<Route path="/drivers/new" element={
-  <RequireAuth><DriverRegisterPage /></RequireAuth>
-}/>

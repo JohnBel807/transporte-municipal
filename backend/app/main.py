@@ -25,6 +25,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS actualizado para producción
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

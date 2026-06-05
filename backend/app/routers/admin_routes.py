@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from asyncpg import Pool
 from app.core.database import get_pool
 from app.core.dependencies import get_current_admin, DriverContext
+from pydantic import BaseModel, Field
+import bcrypt as _bcrypt
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
 

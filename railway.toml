@@ -1,5 +1,2 @@
-@"
 [build]
 dockerfilePath = "deploy/frontend/Dockerfile"
-"@ | Set-Content -Path railway.toml -Encoding utf8
-

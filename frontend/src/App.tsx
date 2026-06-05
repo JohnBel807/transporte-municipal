@@ -7,6 +7,7 @@ import { useAuthStore } from './store/authStore'
 import { LoginPage }    from './components/auth/LoginPage'
 import { DashboardPage } from './components/map/DashboardPage'
 import { ReportsPage }   from './components/reports/ReportsPage'
+import { DriverRegisterPage } from './components/admin/DriverRegisterPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,3 +41,8 @@ export default function App() {
     </QueryClientProvider>
   )
 }
+
+// Dentro de <Routes> agrega:
+<Route path="/drivers/new" element={
+  <RequireAuth><DriverRegisterPage /></RequireAuth>
+}/>

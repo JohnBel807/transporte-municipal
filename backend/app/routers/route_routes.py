@@ -205,3 +205,26 @@ async def deactivate_route_endpoint(
         deactivated_by="admin" if driver.role == "admin" else "conductor",
         reason=body.reason, message="Ruta desactivada correctamente.",
     )
+@router.get("/conductor/routes")
+async def get_my_routes(
+    pool:   Pool          = Depends(get_pool),
+    driver: DriverContext = Depends(get_current_driver),
+) -> list:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, route_name, status, base_fare,
+                   estimated_duration_min, is_public, created_at
+            FROM   colectivo_routes
+            WHERE  driver_id = $1
+            ORDER BY
+                CASE status
+                    WHEN 'activa'    THEN 1
+                    WHEN 'pausada'   THEN 2
+                    WHEN 'archivada' THEN 3
+                END,
+                created_at DESC
+            """,
+            driver.driver_id,
+        )
+    return [dict(r) for r in rows]

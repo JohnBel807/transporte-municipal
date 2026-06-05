@@ -30,19 +30,17 @@ export function LoginPage() {
   const mutation = useMutation({
     mutationFn: loginRequest,
     onSuccess: (data) => {
-      if (data.role !== 'admin') {
-        mutation.reset()
-        alert('Solo los administradores pueden acceder a este panel.')
-        return
-      }
-      // Decodificar nombre del JWT (payload base64)
       const payload = JSON.parse(atob(data.access_token.split('.')[1]))
       login({
         accessToken:  data.access_token,
         refreshToken: data.refresh_token,
-        user: { userId: payload.sub, fullName: payload.name ?? 'Admin', role: 'admin' },
+        user:{
+          userId:   payload.sub,
+          fullName: payload.name ?? 'Usuario',
+          role:     data.role,
+        },
       })
-      navigate('/dashboard')
+      navigate('/')
     },
   })
 

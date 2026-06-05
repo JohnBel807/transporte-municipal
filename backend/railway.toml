@@ -1,7 +1,8 @@
+@"
 [build]
-builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+startCommand = "scripts/entrypoint.sh uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 restartPolicyType = "ON_FAILURE"
-healthcheckPath = "/health"
+"@ | Set-Content -Path backend\railway.toml -Encoding utf8

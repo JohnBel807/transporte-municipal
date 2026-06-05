@@ -1,13 +1,5 @@
-# railway.toml
-# Configuración de despliegue para Railway (servicio: frontend)
-# Documentación: https://docs.railway.app/reference/config-as-code
-# rootDirectory de este servicio: frontend
-
+@"
 [build]
-builder = "DOCKERFILE"
 dockerfilePath = "deploy/frontend/Dockerfile"
-
-[deploy]
-restartPolicyType = "ON_FAILURE"
-healthcheckPath = "/health"
+"@ | Set-Content -Path railway.toml -Encoding utf8
 

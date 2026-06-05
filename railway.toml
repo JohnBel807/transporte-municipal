@@ -1,62 +1,13 @@
 # railway.toml
-# Configuración de despliegue para Railway
+# Configuración de despliegue para Railway (servicio: frontend)
 # Documentación: https://docs.railway.app/reference/config-as-code
+# rootDirectory de este servicio: frontend
 
 [build]
 builder = "DOCKERFILE"
+dockerfilePath = "deploy/frontend/Dockerfile"
 
-[services.backend]
-dockerfilePath  = "backend/Dockerfile"
-buildContext    = "backend"
-releaseCommand  = "alembic upgrade head"
-
-[services.backend.deploy]
-numReplicas       = 1
+[deploy]
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+healthcheckPath = "/health"
 
-[services.backend.healthcheck]
-path             = "/health"
-intervalSeconds  = 30
-timeoutSeconds   = 10
-failureThreshold = 3
-
-[services.backend.variables]
-APP_ENV                  = "production"
-ZONE_CONFIG_DEFAULT      = "velez_ricaurte"
-DB_POOL_MIN_SIZE         = "2"
-DB_POOL_MAX_SIZE         = "10"
-LOG_LEVEL                = "INFO"
-METRICS_ENABLED          = "true"
-WS_HEARTBEAT_INTERVAL    = "30"
-ETA_ALERT_THRESHOLD_SEC  = "90"
-ACCESS_TOKEN_EXPIRE_MIN  = "15"
-REFRESH_TOKEN_EXPIRE_DAYS = "30"
-CORS_ORIGINS             = "https://frontend.up.railway.app"
-
-[services.frontend]
-dockerfilePath  = "frontend/deploy/frontend/Dockerfile"
-buildContext    = "frontend"
-releaseCommand  = ""
-
-[services.frontend.build.args]
-VITE_MAP_REGION       = "velez_ricaurte"
-VITE_POLL_INTERVAL_MS = "3000"
-
-[services.frontend.deploy]
-numReplicas       = 1
-restartPolicyType = "ON_FAILURE"
-
-[services.frontend.healthcheck]
-path            = "/health"
-intervalSeconds = 30
-
-# ── Base de datos PostgreSQL (plugin de Railway) ──────────────────────────────
-[services.database]
-# Railway inyecta $DATABASE_URL automáticamente al conectar el plugin
-plugin = "postgresql"
-
-# Habilitar PostGIS (Railway soporta extensiones en su Postgres managed)
-# Ejecutar manualmente una vez:
-#   CREATE EXTENSION IF NOT EXISTS postgis;
-#   CREATE EXTENSION IF NOT EXISTS postgis_topology;

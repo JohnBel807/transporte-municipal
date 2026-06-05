@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/apiClient'
 import { useAuthStore } from '../../store/authStore'
+import { useGPSTracking } from '../../hooks/useGPSTracking'
 
 interface Route {
   id:                     string
@@ -21,10 +22,12 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 }
 
 export function DriverHomePage() {
-  const navigate     = useNavigate()
+  const navigate    = useNavigate()
   const { user, logout } = useAuthStore()
-  const queryClient  = useQueryClient()
+  const queryClient = useQueryClient()
+
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
+  const [gpsError, setGpsError]             = useState<string | null>(null)
 
   const { data: routes = [], isLoading } = useQuery<Route[]>({
     queryKey: ['driver-routes'],
@@ -35,23 +38,39 @@ export function DriverHomePage() {
     refetchInterval: 10_000,
   })
 
+  const activeRoute = routes.find(r => r.status === 'activa')
+
+  // Tracking GPS — arranca automáticamente cuando hay ruta activa
+  useGPSTracking({
+    enabled:    !!activeRoute,
+    intervalMs: 4000,
+    onError:    setGpsError,
+  })
+
   const activateMutation = useMutation({
     mutationFn: (routeId: string) =>
       api.patch(`/routes/${routeId}/activate`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['driver-routes'] }),
-    onError:   (err: any) => alert(err?.response?.data?.detail?.message ?? err?.response?.data?.detail ?? 'Error al activar'),
+    onSuccess: () => {
+      setGpsError(null)
+      queryClient.invalidateQueries({ queryKey: ['driver-routes'] })
+    },
+    onError: (err: any) =>
+      alert(err?.response?.data?.detail?.message
+        ?? err?.response?.data?.detail
+        ?? 'Error al activar'),
   })
 
   const deactivateMutation = useMutation({
     mutationFn: ({ routeId, reason }: { routeId: string; reason: string }) =>
-      api.patch(`/routes/${routeId}/deactivate`, { reason, final_status: 'pausada' }),
+      api.patch(`/routes/${routeId}/deactivate`, {
+        reason, final_status: 'pausada',
+      }),
     onSuccess: () => {
       setDeactivatingId(null)
+      setGpsError(null)
       queryClient.invalidateQueries({ queryKey: ['driver-routes'] })
     },
   })
-
-  const activeRoute = routes.find(r => r.status === 'activa')
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col">
@@ -98,22 +117,14 @@ export function DriverHomePage() {
 
       {/* Contenido */}
       <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-        {/* Botón nueva ruta */}
-        {!activeRoute && (
-          <button
-            onClick={() => navigate('/driver/routes/new')}
-            className="w-full py-3 border border-teal-500/30 rounded-xl
-                      text-sm text-teal-400 font-medium
-                      hover:bg-teal-500/10 transition"
-          >
-            + Crear nueva ruta
-          </button>
-        )}
+
         {/* Banner ruta activa */}
         {activeRoute && (
           <div className="bg-teal-500/10 border border-teal-500/30
                           rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+
+            {/* Título y estado */}
+            <div className="flex items-center justify-between mb-2">
               <div>
                 <p className="text-xs text-teal-400 font-medium uppercase
                               tracking-wider mb-0.5">
@@ -131,6 +142,25 @@ export function DriverHomePage() {
               </span>
             </div>
 
+            {/* Error de GPS */}
+            {gpsError && (
+              <div className="bg-red-500/10 border border-red-500/20
+                              rounded-lg px-3 py-2 text-xs text-red-400 mb-3">
+                ⚠️ {gpsError}
+              </div>
+            )}
+
+            {/* Indicador GPS activo */}
+            {!gpsError && (
+              <div className="flex items-center gap-2 text-xs
+                              text-slate-400 mb-3">
+                <span className="w-2 h-2 rounded-full bg-teal-400
+                                 animate-pulse"/>
+                Enviando ubicación cada 4 segundos
+              </div>
+            )}
+
+            {/* Botón finalizar */}
             {deactivatingId === activeRoute.id ? (
               <div className="space-y-2">
                 <p className="text-xs text-slate-400">
@@ -176,6 +206,18 @@ export function DriverHomePage() {
           </div>
         )}
 
+        {/* Botón nueva ruta */}
+        {!activeRoute && (
+          <button
+            onClick={() => navigate('/driver/routes/new')}
+            className="w-full py-3 border border-teal-500/30 rounded-xl
+                       text-sm text-teal-400 font-medium
+                       hover:bg-teal-500/10 transition"
+          >
+            + Crear nueva ruta
+          </button>
+        )}
+
         {/* Lista de rutas */}
         <div>
           <p className="text-xs text-slate-500 font-medium uppercase
@@ -200,7 +242,7 @@ export function DriverHomePage() {
 
           <div className="space-y-3">
             {routes.map(route => {
-              const st = STATUS_LABEL[route.status] ?? STATUS_LABEL.pausada
+              const st       = STATUS_LABEL[route.status] ?? STATUS_LABEL.pausada
               const isActive = route.status === 'activa'
 
               return (
@@ -224,7 +266,6 @@ export function DriverHomePage() {
                     </span>
                   </div>
 
-                  {/* Acción según estado */}
                   {route.status === 'pausada' && !activeRoute && (
                     <button
                       disabled={activateMutation.isPending}

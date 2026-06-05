@@ -228,3 +228,96 @@ async def get_my_routes(
             driver.driver_id,
         )
     return [dict(r) for r in rows]
+
+class LocationUpdate(BaseModel):
+    lat:       float = Field(ge=-90,  le=90)
+    lng:       float = Field(ge=-180, le=180)
+    speed_kmh: float = Field(ge=0, default=0)
+    heading:   int   = Field(ge=0, le=359, default=0)
+
+@router.post("/conductor/location", status_code=200)
+async def update_location(
+    body:   LocationUpdate,
+    pool:   Pool          = Depends(get_pool),
+    driver: DriverContext = Depends(get_current_driver),
+) -> dict:
+    """
+    El conductor envía su posición GPS cada 4 segundos.
+    Actualiza route_live_state → dispara trg_position_notify
+    → pg_notify → WebSocket → mapa del admin.
+    """
+    async with pool.acquire() as conn:
+        # Verificar que tiene una ruta activa
+        route = await conn.fetchrow(
+            """
+            SELECT rls.route_id, rls.next_waypoint_id,
+                   rls.current_segment_seq, rls.passengers_aboard
+            FROM   route_live_state rls
+            JOIN   colectivo_routes cr ON cr.id = rls.route_id
+            WHERE  rls.driver_id = $1
+              AND  cr.status     = 'activa'
+            """,
+            driver.driver_id,
+        )
+
+        if not route:
+            return {"status": "no_active_route"}
+
+        # Calcular ETA simple basado en velocidad actual
+        eta_sec = 0
+        if body.speed_kmh > 3 and route["next_waypoint_id"]:
+            dist = await conn.fetchval(
+                """
+                SELECT SQRT(
+                    POWER((rw.latitude  - $1) * 111320, 2) +
+                    POWER((rw.longitude - $2) * 111320 *
+                          COS(RADIANS($1)), 2)
+                )
+                FROM route_waypoints rw
+                WHERE rw.id = $3
+                """,
+                body.lat, body.lng, str(route["next_waypoint_id"]),
+            )
+            if dist:
+                speed_ms = body.speed_kmh * 1000 / 3600
+                eta_sec  = int(dist / speed_ms) if speed_ms > 0 else 0
+
+        # Actualizar posición — esto dispara trg_position_notify
+        await conn.execute(
+            """
+            UPDATE route_live_state
+               SET current_lat       = $1,
+                   current_lng       = $2,
+                   speed_kmh         = $3,
+                   heading           = $4,
+                   eta_next_stop_sec = $5,
+                   updated_at        = NOW()
+             WHERE driver_id = $6
+            """,
+            body.lat, body.lng,
+            int(body.speed_kmh), body.heading,
+            eta_sec, driver.driver_id,
+        )
+
+        # Emitir NOTIFY manualmente (sin PostGIS en producción)
+        route_id = str(route["route_id"])
+        import json
+        payload = json.dumps({
+            "type":             "position_update",
+            "route_id":         route_id,
+            "driver_id":        driver.driver_id,
+            "lat":              body.lat,
+            "lng":              body.lng,
+            "heading":          body.heading,
+            "speed_kmh":        body.speed_kmh,
+            "eta_seconds":      eta_sec,
+            "eta_confidence":   "alta" if body.speed_kmh > 3 else "estimada",
+            "passengers_aboard": route["passengers_aboard"],
+            "updated_at":       "now",
+        })
+        await conn.execute(
+            f"SELECT pg_notify('route:{route_id}', $1)",
+            payload,
+        )
+
+    return {"status": "ok", "eta_seconds": eta_sec}

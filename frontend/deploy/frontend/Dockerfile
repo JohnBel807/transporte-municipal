@@ -49,7 +49,7 @@ FROM nginx:1.27-alpine AS runtime
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Configuración optimizada para SPA React
-COPY deploy/frontend/nginx.conf /etc/nginx/conf.d/app.conf
+COPY deploy/frontend/nginx.conf /etc/nginx/templates/app.conf.template
 
 # Archivos estáticos compilados
 COPY --from=builder /app/dist /usr/share/nginx/html
@@ -59,6 +59,6 @@ COPY deploy/frontend/inject-runtime-config.sh /docker-entrypoint.d/40-inject-con
 RUN chmod +x /docker-entrypoint.d/40-inject-config.sh
 
 HEALTHCHECK --interval=30s --timeout=5s \
-    CMD wget -qO- http://localhost/health || exit 1
+    CMD wget -qO- http://localhost:${PORT}/health || exit 1
 
-EXPOSE 80
+EXPOSE ${PORT}

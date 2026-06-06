@@ -14,17 +14,23 @@ async def dashboard(pool: Pool = Depends(get_pool)) -> dict:
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
             SELECT cr.id AS route_id, cr.route_name,
-                   d.id AS driver_id, u.full_name AS driver_name, d.avg_rating AS driver_rating,
+                   d.id AS driver_id, u.full_name AS driver_name,
+                   d.avg_rating AS driver_rating,
                    v.plate, v.vehicle_type,
-                   ST_Y(rls.current_position::GEOMETRY) AS lat,
-                   ST_X(rls.current_position::GEOMETRY) AS lng,
-                   rls.heading, rls.speed_kmh, rls.passengers_aboard, v.capacity,
-                   ROUND((rls.passengers_aboard::FLOAT / NULLIF(v.capacity,0) * 100)::NUMERIC, 1) AS occupancy_pct,
+                   rls.current_lat AS lat,
+                   rls.current_lng AS lng,
+                   rls.heading, rls.speed_kmh,
+                   rls.passengers_aboard, v.capacity,
+                   ROUND((rls.passengers_aboard::FLOAT /
+                         NULLIF(v.capacity,0) * 100)::NUMERIC, 1)
+                         AS occupancy_pct,
                    COALESCE(rw.place_name, 'Desconocida') AS next_stop,
                    COALESCE(rls.eta_next_stop_sec, 0) AS eta_seconds,
-                   CASE WHEN rls.updated_at > NOW()-INTERVAL '10s' THEN 'live'
-                        WHEN rls.updated_at > NOW()-INTERVAL '30s' THEN 'stale'
-                        ELSE 'offline' END AS signal_status,
+                   CASE
+                       WHEN rls.updated_at > NOW()-INTERVAL '10s' THEN 'live'
+                       WHEN rls.updated_at > NOW()-INTERVAL '30s' THEN 'stale'
+                       ELSE 'offline'
+                   END AS signal_status,
                    COALESCE(oz.name, 'fuera de zona') AS province,
                    rls.updated_at::TEXT AS updated_at
             FROM route_live_state rls
@@ -33,8 +39,9 @@ async def dashboard(pool: Pool = Depends(get_pool)) -> dict:
             JOIN users u ON u.id = d.user_id
             JOIN vehicles v ON v.driver_id = d.id AND v.is_active
             LEFT JOIN route_waypoints rw ON rw.id = rls.next_waypoint_id
-            LEFT JOIN operational_zones oz ON oz.zone_type='provincia'
-                AND ST_Within(rls.current_position::GEOMETRY, oz.geom)
+            LEFT JOIN operational_zones oz ON oz.zone_type = 'provincia'
+                AND rls.current_lat BETWEEN oz.min_lat AND oz.max_lat
+                AND rls.current_lng BETWEEN oz.min_lng AND oz.max_lng
             WHERE cr.status = 'activa'
             ORDER BY province, cr.route_name
         """)
@@ -46,12 +53,14 @@ async def dashboard(pool: Pool = Depends(get_pool)) -> dict:
         if v["signal_status"] != "live":
             stale += 1
     return {
-        "total_active_routes": len(vehicles),
+        "total_active_routes":  len(vehicles),
         "total_passengers_now": sum(v["passengers_aboard"] for v in vehicles),
-        "avg_occupancy_pct": round(sum(v["occupancy_pct"] for v in vehicles) / len(vehicles), 1) if vehicles else 0,
-        "routes_by_province": by_province,
-        "stale_signals": stale,
-        "vehicles": vehicles,
+        "avg_occupancy_pct":    round(
+            sum(v["occupancy_pct"] for v in vehicles) / len(vehicles), 1
+        ) if vehicles else 0,
+        "routes_by_province":   by_province,
+        "stale_signals":        stale,
+        "vehicles":             vehicles,
     }
 
 @router.get("/reports/mobility")
@@ -156,7 +165,6 @@ class DriverCreateRequest(BaseModel):
         color:            str = Field(min_length=2, max_length=30)
         vehicle_type:     str = Field(pattern="^(sedan|van|bus|moto)$")
 
-
 class DriverCreateResponse(BaseModel):
     user_id:    str
     driver_id:  str
@@ -164,7 +172,6 @@ class DriverCreateResponse(BaseModel):
     full_name:  str
     email:      str
     message:    str
-
 
 @router.post("/drivers", response_model=DriverCreateResponse, status_code=201)
 async def create_driver(

@@ -10,6 +10,7 @@ from app.models.routes import (
     ActivateRouteResponse, RouteStatus,
     DeactivateRouteRequest, DeactivateRouteResponse,
 )
+from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/routes", tags=["routes"])

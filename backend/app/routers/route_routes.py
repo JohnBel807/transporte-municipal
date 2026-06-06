@@ -37,8 +37,8 @@ async def create_route_endpoint(
                 waypoint_data = sorted(payload.waypoints, key=lambda x: x.sequence_order)
                 waypoint_rows = await conn.fetch(
                     """INSERT INTO route_waypoints
-                       (route_id, sequence_order, place_name, latitude, longitude, is_terminal, estimated_wait_min, geo_point)
-                       SELECT d.rid, d.seq, d.name, d.lat, d.lng, d.terminal, d.wait, ST_MakePoint(d.lng, d.lat)::GEOGRAPHY
+                       (route_id, sequence_order, place_name, latitude, longitude, is_terminal, estimated_wait_min)
+                       SELECT d.rid, d.seq, d.name, d.lat, d.lng, d.terminal, d.wait
                        FROM UNNEST($1::uuid[],$2::int[],$3::text[],$4::float[],$5::float[],$6::bool[],$7::int[])
                        AS d(rid, seq, name, lat, lng, terminal, wait)
                        RETURNING id, sequence_order, place_name, latitude, longitude, is_terminal, estimated_wait_min""",
@@ -121,7 +121,8 @@ async def activate_route_endpoint(
             zone = await conn.fetchrow(
                 """SELECT oz.name FROM operational_zones oz
                    WHERE oz.zone_type = 'provincia' AND oz.is_active = TRUE
-                     AND ST_Within(ST_MakePoint($1, $2)::GEOMETRY, oz.geom)
+                     AND $1 BETWEEN oz.min_lat AND oz.max_lat
+                     AND $2 BETWEEN oz.min_lng AND oz.max_lng
                    LIMIT 1""",
                 driver_location["lng"], driver_location["lat"],
             )
@@ -141,8 +142,8 @@ async def activate_route_endpoint(
                 route_id,
             )
             await conn.execute(
-                """INSERT INTO route_live_state (route_id, driver_id, current_position, current_segment_seq, heading, speed_kmh, next_waypoint_id, eta_next_stop_sec, passengers_aboard)
-                   SELECT $1,$2,ST_MakePoint($3,$4)::GEOGRAPHY,0,0,0,rw.id,0,0
+                """INSERT INTO route_live_state (route_id, driver_id, current_lat, current_lng, current_segment_seq, heading, speed_kmh, next_waypoint_id, eta_next_stop_sec, passengers_aboard)
+                   SELECT $1,$2,$3,$4,0,0,0,rw.id,0,0
                    FROM route_waypoints rw WHERE rw.route_id=$1 ORDER BY rw.sequence_order LIMIT 1
                    ON CONFLICT (route_id) DO UPDATE SET driver_id=EXCLUDED.driver_id, current_position=EXCLUDED.current_position, updated_at=NOW()""",
                 route_id, driver.driver_id, driver_location["lng"], driver_location["lat"],

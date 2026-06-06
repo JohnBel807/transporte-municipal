@@ -32,7 +32,7 @@ export function DriverHomePage() {
   const { data: routes = [], isLoading } = useQuery<Route[]>({
     queryKey: ['driver-routes'],
     queryFn:  async () => {
-      const { data } = await api.get('/conductor/routes')
+      const { data } = await api.get('/routes/conductor/routes')
       return data
     },
     refetchInterval: 10_000,

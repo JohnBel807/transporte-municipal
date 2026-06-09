@@ -120,11 +120,11 @@ async def activate_route_endpoint(
 
             zone = await conn.fetchrow(
                 """SELECT oz.name FROM operational_zones oz
-                   WHERE oz.zone_type = 'provincia' AND oz.is_active = TRUE
-                     AND $1 BETWEEN oz.min_lat AND oz.max_lat
-                     AND $2 BETWEEN oz.min_lng AND oz.max_lng
-                   LIMIT 1""",
-                driver_location["lng"], driver_location["lat"],
+                WHERE oz.zone_type = 'provincia' AND oz.is_active = TRUE
+                    AND $1 BETWEEN oz.min_lat AND oz.max_lat
+                    AND $2 BETWEEN oz.min_lng AND oz.max_lng
+                LIMIT 1""",
+                driver_location["lat"], driver_location["lng"],  # ← lat primero, lng segundo
             )
             if not zone:
                 raise HTTPException(

@@ -108,7 +108,7 @@ async def activate_route_endpoint(
                 raise HTTPException(status_code=422, detail="El corredor geográfico no está construido")
 
             driver_location = await conn.fetchrow(
-                """SELECT ST_Y(current_position::GEOMETRY) AS lat, ST_X(current_position::GEOMETRY) AS lng,
+                """SELECT lat, lng,
                           EXTRACT(EPOCH FROM (NOW() - updated_at)) AS age_seconds
                    FROM drivers_location WHERE driver_id = $1""",
                 driver.driver_id,

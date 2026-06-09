@@ -29,14 +29,23 @@ export function DriverHomePage() {
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
   const [gpsError, setGpsError]             = useState<string | null>(null)
 
-  const { data: routes = [], isLoading } = useQuery<Route[]>({
+  const { data: routes = [], isLoading, error } = useQuery<Route[]>({
     queryKey: ['driver-routes'],
     queryFn:  async () => {
       const { data } = await api.get('/routes/conductor/routes')
       return data
     },
-    refetchInterval: 10_000,
+    refetchInterval: 30_000,   // cambiar de 10_000 a 30_000 para reducir recargas
+    retry: false,              // no reintentar en error
   })
+
+  {error && (
+  <div className="bg-red-500/10 border border-red-500/20 rounded-xl
+                  px-4 py-3 text-xs text-red-400">
+    Error: {(error as any)?.response?.status} —{' '}
+    {(error as any)?.response?.data?.detail ?? 'Error de conexión'}
+  </div>
+  )}
 
   const activeRoute = routes.find(r => r.status === 'activa')
 

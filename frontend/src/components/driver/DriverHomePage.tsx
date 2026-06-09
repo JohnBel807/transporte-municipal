@@ -26,25 +26,36 @@ export function DriverHomePage() {
   const { user, logout } = useAuthStore()
   const queryClient = useQueryClient()
 
-  // Enviar posición GPS al cargar la pantalla (antes de activar ruta)
+  // Enviar posición GPS periódicamente aunque no haya ruta activa
   useEffect(() => {
     if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          await api.post('/routes/conductor/location', {
-            lat:       pos.coords.latitude,
-            lng:       pos.coords.longitude,
-            speed_kmh: 0,
-            heading:   0,
-          })
-        } catch (e) {
-          console.warn('No se pudo registrar ubicación inicial')
-        }
-      },
-      () => {},
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
+    
+    const sendLocation = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            await api.post('/routes/conductor/location', {
+              lat:       pos.coords.latitude,
+              lng:       pos.coords.longitude,
+              speed_kmh: 0,
+              heading:   0,
+            })
+          } catch (e) {
+            console.warn('No se pudo registrar ubicación')
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 10000 }
+      )
+    }
+    
+    // Enviar inmediatamente al cargar
+    sendLocation()
+    
+    // Enviar cada 60 segundos
+    const interval = setInterval(sendLocation, 60_000)
+    
+    return () => clearInterval(interval)
   }, [])
 
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)

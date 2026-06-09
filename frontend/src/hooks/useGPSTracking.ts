@@ -18,7 +18,7 @@ export function useGPSTracking({
 
   const sendPosition = useCallback(async (pos: GeolocationPosition) => {
     try {
-      await api.post('/conductor/location', {
+      await api.post('/routes/conductor/location', {
         lat:       pos.coords.latitude,
         lng:       pos.coords.longitude,
         speed_kmh: pos.coords.speed ? pos.coords.speed * 3.6 : 0,

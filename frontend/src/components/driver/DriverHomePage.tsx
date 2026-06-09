@@ -32,7 +32,7 @@ export function DriverHomePage() {
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          await api.post('/conductor/location', {
+          await api.post('/routes/conductor/location', {
             lat:       pos.coords.latitude,
             lng:       pos.coords.longitude,
             speed_kmh: 0,

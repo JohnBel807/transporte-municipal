@@ -1,4 +1,7 @@
 #!/bin/sh
+# Eliminar la configuración por defecto de Nginx
+rm -f /etc/nginx/conf.d/default.conf
+#!/bin/sh
 # inject-runtime-config.sh
 #
 # Problema que resuelve:

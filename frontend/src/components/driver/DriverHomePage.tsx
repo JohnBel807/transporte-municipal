@@ -59,6 +59,7 @@ export function DriverHomePage() {
   }, [])
 
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
+  const [activatingId, setActivatingId]     = useState<string | null>(null)
   const [gpsError, setGpsError]             = useState<string | null>(null)
 
   const { data: routes = [], isLoading, error } = useQuery<Route[]>({
@@ -80,16 +81,21 @@ export function DriverHomePage() {
   })
 
   const activateMutation = useMutation({
-    mutationFn: (routeId: string) =>
-      api.patch(`/routes/${routeId}/activate`),
+    mutationFn: (routeId: string) => {
+      setActivatingId(routeId)
+      return api.patch(`/routes/${routeId}/activate`)
+    },
     onSuccess: () => {
+      setActivatingId(null)
       setGpsError(null)
       queryClient.invalidateQueries({ queryKey: ['driver-routes'] })
     },
-    onError: (err: any) =>
+    onError: (err: any) => {
+      setActivatingId(null)
       alert(err?.response?.data?.detail?.message
         ?? err?.response?.data?.detail
-        ?? 'Error al activar'),
+        ?? 'Error al activar')
+    },
   })
 
   const deactivateMutation = useMutation({
@@ -197,8 +203,12 @@ export function DriverHomePage() {
                     <span className={`text-xs font-medium px-2 py-1 rounded-lg border ml-2 shrink-0 ${st.color}`}>{st.label}</span>
                   </div>
                   {route.status === 'pausada' && !activeRoute && (
-                    <button disabled={activateMutation.isPending} onClick={() => activateMutation.mutate(route.id)} className="w-full py-2 text-sm bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-slate-950 font-semibold rounded-lg transition">
-                      {activateMutation.isPending ? 'Activando…' : 'Iniciar servicio'}
+                    <button 
+                      disabled={activateMutation.isPending || activatingId !== null} 
+                      onClick={() => activateMutation.mutate(route.id)} 
+                      className="w-full py-2 text-sm bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-slate-950 font-semibold rounded-lg transition"
+                    >
+                      {activatingId === route.id ? 'Activando…' : 'Iniciar servicio'}
                     </button>
                   )}
                   {route.status === 'pausada' && activeRoute && <p className="text-xs text-slate-600 text-center">Finaliza la ruta activa primero</p>}

@@ -93,7 +93,8 @@ async def activate_route_endpoint(
                           EXISTS(SELECT 1 FROM route_corridors rc WHERE rc.route_id = cr.id) AS has_corridor
                    FROM colectivo_routes cr
                    LEFT JOIN route_waypoints rw ON rw.route_id = cr.id
-                   WHERE cr.id = $1 GROUP BY cr.id""",
+                   WHERE cr.id = $1 GROUP BY cr.id
+                   FOR UPDATE NOWAIT""",
                 route_id,
             )
             if not route:

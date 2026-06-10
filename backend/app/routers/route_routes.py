@@ -124,7 +124,7 @@ async def activate_route_endpoint(
                     AND $1 BETWEEN oz.min_lat AND oz.max_lat
                     AND $2 BETWEEN oz.min_lng AND oz.max_lng
                 LIMIT 1""",
-                driver_location["lat"], driver_location["lng"],  # ← lat primero, lng segundo
+                driver_location["lat"], driver_location["lng"],
             )
             if not zone:
                 raise HTTPException(
@@ -212,6 +212,7 @@ async def deactivate_route_endpoint(
         deactivated_by="admin" if driver.role == "admin" else "conductor",
         reason=body.reason, message="Ruta desactivada correctamente.",
     )
+
 @router.get("/conductor/routes")
 async def get_my_routes(
     pool:   Pool          = Depends(get_pool),
@@ -248,11 +249,6 @@ async def update_location(
     pool:   Pool          = Depends(get_pool),
     driver: DriverContext = Depends(get_current_driver),
 ) -> dict:
-    """
-    El conductor envía su posición GPS cada 4 segundos.
-    Actualiza route_live_state → dispara trg_position_notify
-    → pg_notify → WebSocket → mapa del admin.
-    """
     async with pool.acquire() as conn:
         # Verificar que tiene una ruta activa
         route = await conn.fetchrow(
@@ -289,7 +285,7 @@ async def update_location(
                 speed_ms = body.speed_kmh * 1000 / 3600
                 eta_sec  = int(dist / speed_ms) if speed_ms > 0 else 0
 
-        # Actualizar posición — esto dispara trg_position_notify
+        # Actualizar posición en live state
         await conn.execute(
             """
             UPDATE route_live_state
@@ -305,10 +301,21 @@ async def update_location(
             int(body.speed_kmh), body.heading,
             eta_sec, driver.driver_id,
         )
+        
+        # Actualizar drivers_location
+        await conn.execute(
+            """INSERT INTO drivers_location (driver_id, lat, lng, updated_at)
+               VALUES ($1, $2, $3, NOW())
+               ON CONFLICT (driver_id) DO UPDATE
+                   SET lat = EXCLUDED.lat,
+                       lng = EXCLUDED.lng,
+                       updated_at = NOW()
+            """,
+            driver.driver_id, body.lat, body.lng,
+        )
 
-        # Emitir NOTIFY manualmente (sin PostGIS en producción)
+        # Emitir NOTIFY manualmente
         route_id = str(route["route_id"])
-        import json
         payload = json.dumps({
             "type":             "position_update",
             "route_id":         route_id,

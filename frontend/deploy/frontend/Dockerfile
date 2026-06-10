@@ -56,7 +56,7 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Script que inyecta variables de entorno en runtime (ver comentario abajo)
 COPY deploy/frontend/inject-runtime-config.sh /docker-entrypoint.d/05-inject-config.sh
-RUN chmod +x /docker-entrypoint.d/40-inject-config.sh
+RUN chmod +x /docker-entrypoint.d/05-inject-config.sh
 
 HEALTHCHECK --interval=30s --timeout=5s \
     CMD wget -qO- http://localhost:${PORT}/health || exit 1

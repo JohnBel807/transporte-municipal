@@ -1,4 +1,3 @@
-rm -f /etc/nginx/conf.d/default.conf
 #!/bin/sh
 # inject-runtime-config.sh
 #

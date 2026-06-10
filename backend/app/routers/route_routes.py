@@ -250,6 +250,18 @@ async def update_location(
     driver: DriverContext = Depends(get_current_driver),
 ) -> dict:
     async with pool.acquire() as conn:
+        # Siempre actualizar drivers_location antes de verificar ruta
+        await conn.execute(
+            """INSERT INTO drivers_location (driver_id, lat, lng, updated_at)
+               VALUES ($1, $2, $3, NOW())
+               ON CONFLICT (driver_id) DO UPDATE
+                   SET lat = EXCLUDED.lat,
+                       lng = EXCLUDED.lng,
+                       updated_at = NOW()
+            """,
+            driver.driver_id, body.lat, body.lng,
+        )
+
         # Verificar que tiene una ruta activa
         route = await conn.fetchrow(
             """
@@ -300,18 +312,6 @@ async def update_location(
             body.lat, body.lng,
             int(body.speed_kmh), body.heading,
             eta_sec, driver.driver_id,
-        )
-        
-        # Actualizar drivers_location
-        await conn.execute(
-            """INSERT INTO drivers_location (driver_id, lat, lng, updated_at)
-               VALUES ($1, $2, $3, NOW())
-               ON CONFLICT (driver_id) DO UPDATE
-                   SET lat = EXCLUDED.lat,
-                       lng = EXCLUDED.lng,
-                       updated_at = NOW()
-            """,
-            driver.driver_id, body.lat, body.lng,
         )
 
         # Emitir NOTIFY manualmente

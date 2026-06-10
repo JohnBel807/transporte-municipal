@@ -142,11 +142,16 @@ async def activate_route_endpoint(
                 route_id,
             )
             await conn.execute(
-                """INSERT INTO route_live_state (route_id, driver_id, current_lat, current_lng, current_segment_seq, heading, speed_kmh, next_waypoint_id, eta_next_stop_sec, passengers_aboard)
+                """INSERT INTO route_live_state 
+                   (route_id, driver_id, current_lat, current_lng, current_segment_seq, heading, speed_kmh, next_waypoint_id, eta_next_stop_sec, passengers_aboard)
                    SELECT $1,$2,$3,$4,0,0,0,rw.id,0,0
                    FROM route_waypoints rw WHERE rw.route_id=$1 ORDER BY rw.sequence_order LIMIT 1
-                   ON CONFLICT (route_id) DO UPDATE SET driver_id=EXCLUDED.driver_id, current_position=EXCLUDED.current_position, updated_at=NOW()""",
-                route_id, driver.driver_id, driver_location["lng"], driver_location["lat"],
+                   ON CONFLICT (route_id) DO UPDATE 
+                   SET driver_id   = EXCLUDED.driver_id,
+                       current_lat = EXCLUDED.current_lat,
+                       current_lng = EXCLUDED.current_lng,
+                       updated_at  = NOW()""",
+                route_id, driver.driver_id, driver_location["lat"], driver_location["lng"],
             )
 
     return ActivateRouteResponse(

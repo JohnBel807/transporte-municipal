@@ -115,7 +115,7 @@ async def activate_route_endpoint(
             )
             if not driver_location:
                 raise HTTPException(status_code=422, detail="No se encontró tu ubicación GPS")
-            if driver_location["age_seconds"] > 120:
+            if driver_location["age_seconds"] > 300:
                 raise HTTPException(status_code=422, detail=f"Tu ubicación GPS tiene {int(driver_location['age_seconds'])}s de antigüedad")
 
             zone = await conn.fetchrow(

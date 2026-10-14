@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0f172a"/>
+  <title>Colectivos — Velez &amp; Ricaurte</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    #app { display: flex; flex-direction: column; height: 100dvh; }
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 15px; font-weight: 600; }
+    header p  { font-size: 12px; color: #64748b; }
+    .badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px; border: 1px solid; }
+    .badge-live { color: #2dd4bf; border-color: #2dd4bf33; background: #2dd4bf11; }
+    .badge-none { color: #64748b; border-color: #33415533; background: transparent; }
+    #map { flex: 1; min-height: 0; }
+    .panel { background: #1e293b; border-top: 1px solid #334155; max-height: 55vh; overflow-y: auto; }
+    .tabs { display: flex; border-bottom: 1px solid #334155; position: sticky; top: 0; background: #1e293b; z-index: 10; }
+    .tab { flex: 1; padding: 10px; text-align: center; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+    .tab.active { color: #2dd4bf; border-bottom-color: #2dd4bf; }
+    .route-card { padding: 12px 16px; border-bottom: 1px solid #0f172a; background: #0f172a; cursor: pointer; transition: background 0.15s; }
+    .route-card:hover { background: #1e293b; }
+    .route-card.selected { background: #134e4a22; border-left: 3px solid #2dd4bf; }
+    .route-name { font-size: 14px; font-weight: 600; color: #f1f5f9; }
+    .route-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .route-row { display: flex; justify-content: space-between; align-items: center; }
+    .seats { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid; }
+    .seats-ok   { color: #2dd4bf; border-color: #2dd4bf33; background: #2dd4bf11; }
+    .seats-few  { color: #fbbf24; border-color: #fbbf2433; background: #fbbf2411; }
+    .seats-full { color: #f87171; border-color: #f8717133; background: #f8717111; }
+    .waypoint-item { padding: 10px 16px; border-bottom: 1px solid #0f172a; display: flex; align-items: center; gap: 12px; }
+    .waypoint-item.passed { opacity: 0.4; }
+    .waypoint-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #2dd4bf; background: transparent; flex-shrink: 0; }
+    .waypoint-dot.terminal { background: #2dd4bf; }
+    .waypoint-dot.passed   { border-color: #475569; }
+    .waypoint-info { flex: 1; min-width: 0; }
+    .waypoint-name { font-size: 13px; font-weight: 500; color: #e2e8f0; }
+    .waypoint-eta  { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .notify-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 8px; border: 1px solid; cursor: pointer; transition: all 0.15s; white-space: nowrap; background: transparent; }
+    .notify-btn.off { color: #64748b; border-color: #334155; }
+    .notify-btn.off:hover { color: #2dd4bf; border-color: #2dd4bf; }
+    .notify-btn.on { color: #0f172a; background: #2dd4bf; border-color: #2dd4bf; font-weight: 700; }
+    .msg-panel { padding: 12px 16px; border-top: 1px solid #334155; background: #0f172a; }
+    .msg-panel-title { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
+    .msg-list { margin-bottom: 10px; max-height: 100px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .msg-bubble { padding: 6px 10px; border-radius: 8px; font-size: 12px; }
+    .msg-bubble.pasajero { background: #1e293b; color: #e2e8f0; align-self: flex-start; }
+    .msg-bubble.conductor { background: #134e4a; color: #2dd4bf; border: 1px solid #2dd4bf33; align-self: flex-end; }
+    .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .quick-btn { font-size: 11px; padding: 4px 8px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #94a3b8; cursor: pointer; transition: all 0.15s; }
+    .quick-btn:hover { border-color: #2dd4bf; color: #2dd4bf; }
+    .msg-input-row { display: flex; gap: 8px; }
+    .msg-input { flex: 1; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 8px 12px; color: #e2e8f0; font-size: 13px; outline: none; transition: border-color 0.15s; }
+    .msg-input:focus { border-color: #2dd4bf; }
+    .msg-send { background: #2dd4bf; color: #0f172a; font-weight: 700; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
+    .msg-send:hover { background: #14b8a6; }
+    .msg-send:disabled { opacity: 0.5; cursor: not-allowed; }
+    .empty-state { text-align: center; padding: 32px 16px; color: #475569; font-size: 13px; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2dd4bf; color: #0f172a; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 600; box-shadow: 0 4px 20px #0004; z-index: 9999; max-width: 90vw; text-align: center; animation: slideUp 0.3s ease; }
+    @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+    .leaflet-container { background: #0f172a !important; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div><h1>🚌 Colectivos en linea</h1><p>Velez &amp; Ricaurte</p></div>
+    <span id="status-badge" class="badge badge-none">Cargando...</span>
+  </header>
+  <div id="map"></div>
+  <div class="panel">
+    <div class="tabs">
+      <div class="tab active" id="tab-routes" onclick="showTab('routes')">Rutas</div>
+      <div class="tab" id="tab-stops" onclick="showTab('stops')">Paradas</div>
+    </div>
+    <div id="panel-routes"></div>
+    <div id="panel-stops" style="display:none"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const API = 'https://api.velezyricaurte.com'
+const POLL_MS = 10_000, NOTIFY_MS = 15_000, ALERT_MIN = 2
+
+let routes = [], markers = {}, selected = null, waypoints = []
+let watching = {}, notified = new Set(), currentTab = 'routes'
+let msgList = [], msgPollInterval = null
+
+const map = L.map('map', { zoomControl: true }).setView([5.95, -73.68], 11)
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap', maxZoom: 18,
+}).addTo(map)
+
+function makeIcon(color, label = '') {
+  return L.divIcon({
+    className: '',
+    html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+      <div style="background:#1e293b;border:1px solid ${color};color:${color};font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 8px #0006;max-width:120px;overflow:hidden;text-overflow:ellipsis;">${label}</div>
+      <div style="width:10px;height:10px;background:${color};border:2px solid #0f172a;border-radius:50%;box-shadow:0 0 0 3px ${color}44;"></div>
+    </div>`,
+    iconSize: [120, 32], iconAnchor: [60, 32],
+  })
+}
+
+function showTab(tab) {
+  currentTab = tab
+  document.getElementById('tab-routes').classList.toggle('active', tab === 'routes')
+  document.getElementById('tab-stops').classList.toggle('active', tab === 'stops')
+  document.getElementById('panel-routes').style.display = tab === 'routes' ? '' : 'none'
+  document.getElementById('panel-stops').style.display  = tab === 'stops'  ? '' : 'none'
+}
+
+function seatsClass(s, c) { const p = s/c; return p > 0.3 ? 'seats-ok' : p > 0 ? 'seats-few' : 'seats-full' }
+function seatsLabel(s) { return s <= 0 ? 'Lleno' : s === 1 ? '1 puesto' : `${s} puestos` }
+function etaLabel(s) { if (!s || s <= 0) return ''; return s < 60 ? `${s}s` : `${Math.ceil(s/60)} min` }
+
+function showToast(msg) {
+  const el = document.createElement('div')
+  el.className = 'toast'; el.textContent = msg
+  document.body.appendChild(el); setTimeout(() => el.remove(), 4000)
+}
+
+async function requestNotifyPermission() {
+  if (!('Notification' in window)) return false
+  if (Notification.permission === 'granted') return true
+  if (Notification.permission === 'denied') { showInstructions(); return false }
+  return (await Notification.requestPermission()) === 'granted'
+}
+
+function showInstructions() {
+  const isAndroid = /android/i.test(navigator.userAgent)
+  const isIOS = /iphone|ipad/i.test(navigator.userAgent)
+  alert(isAndroid
+    ? 'Para activar notificaciones:\n1. Toca el candado en la barra\n2. Permisos\n3. Activa Notificaciones'
+    : isIOS
+      ? 'Para activar notificaciones:\n1. Ajustes del iPhone\n2. Safari > este sitio\n3. Activa Notificaciones'
+      : 'Para activar:\n1. Clic en candado en la barra\n2. Notificaciones > Permitir')
+}
+
+function sendNotification(title, body) {
+  if (Notification.permission === 'granted') new Notification(title, { body, vibrate: [200,100,200] })
+  showToast(`🚌 ${title} — ${body}`)
+}
+
+async function toggleWatch(waypointId, placeName) {
+  if (watching[waypointId]) {
+    delete watching[waypointId]; notified.delete(waypointId)
+    renderStops(); showToast(`Alerta desactivada para "${placeName}"`); return
+  }
+  if (!(await requestNotifyPermission())) return
+  watching[waypointId] = true; notified.delete(waypointId)
+  renderStops(); showToast(`Te avisaremos cuando el colectivo este cerca de "${placeName}"`)
+}
+
+function checkAlerts() {
+  if (!selected || !waypoints.length) return
+  for (const wp of waypoints) {
+    if (!watching[wp.id] || notified.has(wp.id) || wp.already_passed) continue
+    if (wp.eta_minutes !== null && wp.eta_minutes <= ALERT_MIN) {
+      sendNotification(`Colectivo llegando a ${wp.place_name}`,
+        `Llega en aprox. ${Math.ceil(wp.eta_minutes)} minuto${wp.eta_minutes <= 1 ? '' : 's'}`)
+      notified.add(wp.id)
+    }
+  }
+}
+
+// ── Mensajes ──────────────────────────────────────────────────────────────────
+async function sendMessage() {
+  if (!selected) return
+  const input = document.getElementById('msg-input')
+  const msg = input.value.trim(); if (!msg) return
+  const btn = document.getElementById('msg-send-btn'); btn.disabled = true
+  try {
+    const res = await fetch(`${API}/routes/public/${selected}/messages`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    })
+    if (!res.ok) throw new Error()
+    input.value = ''
+    showToast('Mensaje enviado al conductor')
+    await fetchMessages(selected)
+  } catch { showToast('No se pudo enviar el mensaje') }
+  finally { btn.disabled = false }
+}
+
+function setQuickMsg(text) {
+  const input = document.getElementById('msg-input')
+  if (input) input.value = text
+}
+
+function renderMessages() {
+  const el = document.getElementById('msg-list'); if (!el) return
+  if (!msgList.length) {
+    el.innerHTML = '<p style="font-size:11px;color:#475569;text-align:center">Sin mensajes aun</p>'; return
+  }
+  el.innerHTML = [...msgList].map(m => `
+    <div class="msg-bubble ${m.sender}">
+      <span style="font-weight:600">${m.sender === 'conductor' ? '🚌 Conductor' : '👤 Tu'}:</span>
+      ${m.message}
+    </div>`).join('')
+  el.scrollTop = el.scrollHeight
+}
+
+async function fetchMessages(routeId) {
+  try {
+    const res = await fetch(`${API}/routes/public/${routeId}/messages`)
+    if (!res.ok) return
+    msgList = await res.json()
+    renderMessages()
+  } catch {}
+}
+
+// ── Reservas ──────────────────────────────────────────────────────────────────
+async function createReservation() {
+  if (!selected) return
+  const name  = (document.getElementById('res-name').value.trim()) || 'Pasajero'
+  const seats = parseInt(document.getElementById('res-seats').value) || 1
+  const note  = document.getElementById('res-note').value.trim()
+  const btn   = document.getElementById('res-btn'); btn.disabled = true
+
+  let lat = null, lng = null
+  try {
+    if (navigator.geolocation) {
+      await new Promise(resolve => {
+        navigator.geolocation.getCurrentPosition(
+          pos => { lat = pos.coords.latitude; lng = pos.coords.longitude; resolve() },
+          () => resolve(), { timeout: 5000 }
+        )
+      })
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(`${API}/routes/public/${selected}/reservations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passenger_name: name, seats, pickup_note: note || null, pickup_lat: lat, pickup_lng: lng }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail)
+    showToast(`✅ ${data.message}`)
+    document.getElementById('res-name').value  = ''
+    document.getElementById('res-note').value  = ''
+    document.getElementById('res-seats').value = '1'
+  } catch (err) {
+    showToast(`❌ ${err.message || 'Error al reservar'}`)
+  } finally { btn.disabled = false }
+}
+
+// ── Paradas ───────────────────────────────────────────────────────────────────
+async function loadWaypoints(routeId) {
+  try {
+    const res = await fetch(`${API}/routes/public/${routeId}/waypoints`)
+    if (!res.ok) return
+    waypoints = await res.json()
+    renderStops(); checkAlerts()
+  } catch {}
+}
+
+function selectRoute(id) {
+  selected = id; waypoints = []; watching = {}; notified = new Set(); msgList = []
+  if (msgPollInterval) clearInterval(msgPollInterval)
+  const r = routes.find(r => r.route_id === id)
+  if (r) { map.flyTo([r.lat, r.lng], 14, { duration: 0.8 }); markers[id]?.openPopup() }
+  loadWaypoints(id); showTab('stops'); renderRoutes()
+  fetchMessages(id)
+  msgPollInterval = setInterval(() => fetchMessages(id), 5_000)
+}
+
+function renderRoutes() {
+  const badge = document.getElementById('status-badge')
+  if (routes.length > 0) { badge.className = 'badge badge-live'; badge.textContent = `${routes.length} en linea` }
+  else { badge.className = 'badge badge-none'; badge.textContent = 'Sin servicio' }
+
+  const activeIds = new Set(routes.map(r => r.route_id))
+  Object.keys(markers).forEach(id => { if (!activeIds.has(id)) { markers[id].remove(); delete markers[id] } })
+  routes.forEach(r => {
+    const color = r.signal_status === 'live' ? '#2dd4bf' : r.signal_status === 'stale' ? '#fbbf24' : '#f87171'
+    const icon = makeIcon(color, r.route_name)
+    const popup = `<div style="font-size:13px;line-height:1.6"><b>${r.route_name}</b><br/>
+      ${r.passengers_aboard}/${r.capacity} pasajeros · ${r.speed_kmh} km/h<br/>
+      → ${r.next_stop}${r.eta_seconds ? ` (${etaLabel(r.eta_seconds)})` : ''}</div>`
+    if (markers[r.route_id]) { markers[r.route_id].setLatLng([r.lat, r.lng]).setIcon(icon); markers[r.route_id].getPopup()?.setContent(popup) }
+    else { markers[r.route_id] = L.marker([r.lat, r.lng], { icon }).bindPopup(popup).on('click', () => selectRoute(r.route_id)).addTo(map) }
+  })
+
+  const el = document.getElementById('panel-routes')
+  if (!routes.length) { el.innerHTML = `<div class="empty-state">No hay colectivos en servicio<br/><span style="font-size:24px;display:block;margin-top:12px">🕐</span></div>`; return }
+  el.innerHTML = routes.map(r => `
+    <div class="route-card ${selected === r.route_id ? 'selected' : ''}" onclick="selectRoute('${r.route_id}')">
+      <div class="route-row">
+        <span class="route-name">${r.route_name}</span>
+        <span class="seats ${seatsClass(r.seats_available, r.capacity)}">${seatsLabel(r.seats_available)}</span>
+      </div>
+      <div class="route-meta">
+        → ${r.next_stop} ${r.eta_seconds ? `· llega en ${etaLabel(r.eta_seconds)}` : ''}
+        · $${Number(r.base_fare).toLocaleString('es-CO')}
+      </div>
+    </div>`).join('')
+}
+
+function renderStops() {
+  const el = document.getElementById('panel-stops')
+  if (!selected) { el.innerHTML = `<div class="empty-state">Selecciona una ruta para ver sus paradas</div>`; return }
+  if (!waypoints.length) { el.innerHTML = `<div class="empty-state">Cargando paradas...</div>`; return }
+
+  const waypointsHtml = waypoints.map(wp => {
+    const passed = wp.already_passed, isWatch = watching[wp.id]
+    const etaTxt = wp.eta_minutes !== null ? `~${Math.ceil(wp.eta_minutes)} min`
+      : wp.distance_m ? `${(wp.distance_m/1000).toFixed(1)} km` : 'Sin datos'
+    return `
+      <div class="waypoint-item ${passed ? 'passed' : ''}">
+        <div class="waypoint-dot ${wp.is_terminal ? 'terminal' : ''} ${passed ? 'passed' : ''}"></div>
+        <div class="waypoint-info">
+          <div class="waypoint-name">${wp.place_name}</div>
+          <div class="waypoint-eta">${passed ? 'Ya paso' : etaTxt}</div>
+        </div>
+        ${!passed ? `<button class="notify-btn ${isWatch ? 'on' : 'off'}"
+          onclick="toggleWatch('${wp.id}', '${wp.place_name.replace(/'/g, "\\'")}')">
+          ${isWatch ? '🔔 Activado' : '🔕 Avisar'}</button>` : ''}
+      </div>`
+  }).join('')
+
+  const msgHtml = `
+    <div class="msg-panel">
+      <p class="msg-panel-title">📨 Mensaje al conductor</p>
+      <div class="msg-list" id="msg-list"></div>
+      <div class="quick-btns">
+        <button class="quick-btn" onclick="setQuickMsg('Espereme por favor 🙏')">Espereme 🙏</button>
+        <button class="quick-btn" onclick="setQuickMsg('Voy con un paquete 📦')">Paquete 📦</button>
+        <button class="quick-btn" onclick="setQuickMsg('Somos 2 personas 👥')">2 personas 👥</button>
+        <button class="quick-btn" onclick="setQuickMsg('Cuanto falta? ⏱️')">Cuanto falta ⏱️</button>
+      </div>
+      <div class="msg-input-row">
+        <input id="msg-input" class="msg-input" maxlength="140"
+          placeholder="Escribe un mensaje... (max 140 caracteres)"
+          onkeydown="if(event.key==='Enter') sendMessage()"/>
+        <button id="msg-send-btn" class="msg-send" onclick="sendMessage()">Enviar</button>
+      </div>
+    </div>`
+
+  const reservationHtml = `
+    <div class="msg-panel" style="border-top:1px solid #334155">
+      <p class="msg-panel-title">🎫 Reservar puesto</p>
+      <div style="display:grid;grid-template-columns:1fr 90px;gap:8px;margin-bottom:8px">
+        <input id="res-name" class="msg-input" placeholder="Tu nombre (opcional)" maxlength="60"/>
+        <select id="res-seats" class="msg-input" style="padding:8px;cursor:pointer">
+          <option value="1">1 puesto</option>
+          <option value="2">2 puestos</option>
+          <option value="3">3 puestos</option>
+          <option value="4">4 puestos</option>
+        </select>
+      </div>
+      <input id="res-note" class="msg-input" style="width:100%;margin-bottom:8px"
+        placeholder="Donde te recogemos? (ej: frente a la farmacia)" maxlength="140"/>
+      <button id="res-btn" class="msg-send" style="width:100%" onclick="createReservation()">
+        🎫 Reservar puesto
+      </button>
+      <p style="font-size:10px;color:#475569;margin-top:6px;text-align:center">
+        Si permites la ubicacion, el conductor sabra exactamente donde recogerme
+      </p>
+    </div>`
+
+  el.innerHTML = waypointsHtml + msgHtml + reservationHtml
+  renderMessages()
+}
+
+async function fetchRoutes() {
+  try {
+    const res = await fetch(`${API}/routes/public/active`)
+    if (!res.ok) throw new Error(res.status)
+    routes = await res.json()
+  } catch {}
+  renderRoutes()
+  if (selected) loadWaypoints(selected)
+}
+
+fetchRoutes()
+setInterval(fetchRoutes, POLL_MS)
+setInterval(checkAlerts, NOTIFY_MS)
+</script>
+</body>
+</html>

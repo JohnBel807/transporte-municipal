@@ -1,0 +1,27 @@
+{
+  "name": "Transporte Velez y Ricaurte",
+  "short_name": "Transporte VR",
+  "description": "Colectivos y transporte en tiempo real - Provincia de Velez y Ricaurte",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#2dd4bf",
+  "orientation": "portrait",
+  "lang": "es",
+  "icons": [
+    { "src": "/ico-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/ico-192.png", "sizes": "192x192", "type": "image/png", "form_factor": "narrow" }
+  ],
+  "categories": ["transportation", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Ver rutas activas",
+      "url": "/dashboard",
+      "description": "Ver colectivos en tiempo real"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '../../services/apiClient'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 interface Waypoint {
   sequence_order:     number
@@ -93,6 +94,7 @@ export function DriverRouteCreatePage() {
   const mutation = useMutation({
     mutationFn: (data: RouteForm) => api.post('/routes/', data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['driver-routes'] })
       alert('Ruta creada correctamente')
       navigate('/conductor')
     },

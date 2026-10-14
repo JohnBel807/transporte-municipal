@@ -1,6 +1,10 @@
 from pydantic_settings import BaseSettings
 from pydantic import SecretStr
 
+n8n_webhook_reserva_creada:       str = ""
+n8n_webhook_ruta_activada:        str = ""
+n8n_webhook_conductor_registrado: str = ""
+
 class Settings(BaseSettings):
     app_env: str = "development"
     zone_config_default: str = "velez_ricaurte"

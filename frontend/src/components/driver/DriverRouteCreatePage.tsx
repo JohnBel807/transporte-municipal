@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
 import { api } from '../../services/apiClient'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
@@ -48,6 +47,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export function DriverRouteCreatePage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [form, setForm] = useState<RouteForm>({
     route_name:             '',
     description:            '',
@@ -123,7 +123,7 @@ export function DriverRouteCreatePage() {
       <header className="border-b border-slate-800 px-4 py-4 flex items-center gap-3">
         <button onClick={() => navigate('/conductor')}
           className="text-slate-500 hover:text-white transition text-lg">
-          ←
+          Ã¢â€ Â
         </button>
         <div>
           <h1 className="text-sm font-semibold">Nueva Ruta</h1>
@@ -135,16 +135,16 @@ export function DriverRouteCreatePage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <h2 className="text-xs font-semibold text-teal-400 uppercase tracking-wider">
-              Información general
+              InformaciÃƒÂ³n general
             </h2>
             <Field label="Nombre de la ruta">
               <input className={inputCls} required
-                value={form.route_name} placeholder="Ej: Barbosa - Vélez"
+                value={form.route_name} placeholder="Ej: Barbosa - VÃƒÂ©lez"
                 onChange={e => setField('route_name', e.target.value)}/>
             </Field>
-            <Field label="Descripción (opcional)">
+            <Field label="DescripciÃƒÂ³n (opcional)">
               <input className={inputCls}
-                value={form.description} placeholder="Descripción breve"
+                value={form.description} placeholder="DescripciÃƒÂ³n breve"
                 onChange={e => setField('description', e.target.value)}/>
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -153,7 +153,7 @@ export function DriverRouteCreatePage() {
                   value={form.base_fare} min={500}
                   onChange={e => setField('base_fare', e.target.value)}/>
               </Field>
-              <Field label="Duración estimada (min)">
+              <Field label="DuraciÃƒÂ³n estimada (min)">
                 <input className={inputCls} type="number" required
                   value={form.estimated_duration_min} min={1} max={480}
                   onChange={e => setField('estimated_duration_min', e.target.value)}/>
@@ -181,7 +181,7 @@ export function DriverRouteCreatePage() {
                 <div key={idx} className={`rounded-xl p-4 border space-y-3 ${terminal ? 'bg-teal-500/5 border-teal-500/20' : 'bg-slate-800/50 border-slate-700/50'}`}>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-slate-400">
-                      {isFirst ? '🟢 Inicio' : isLast ? '🔴 Final' : `📍 Parada ${idx}`}
+                      {isFirst ? 'Ã°Å¸Å¸Â¢ Inicio' : isLast ? 'Ã°Å¸â€Â´ Final' : `Ã°Å¸â€œÂ Parada ${idx}`}
                     </span>
                     {!terminal && (
                       <button type="button" onClick={() => removeWaypoint(idx)}
@@ -226,9 +226,9 @@ export function DriverRouteCreatePage() {
                         },
                         (err) => {
                           if (err.code === err.PERMISSION_DENIED) {
-                            alert('Debes permitir el acceso a tu ubicación en el navegador')
+                            alert('Debes permitir el acceso a tu ubicaciÃƒÂ³n en el navegador')
                           } else {
-                            alert('No se pudo obtener tu ubicación. Intenta de nuevo.')
+                            alert('No se pudo obtener tu ubicaciÃƒÂ³n. Intenta de nuevo.')
                           }
                         },
                         { enableHighAccuracy: true, timeout: 10000 }
@@ -239,7 +239,7 @@ export function DriverRouteCreatePage() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
                     </svg>
-                    Usar mi ubicación actual
+                    Usar mi ubicaciÃƒÂ³n actual
                   </button>
 
                   <Field label="Tiempo de espera (min)">
@@ -265,7 +265,7 @@ export function DriverRouteCreatePage() {
             </button>
             <button type="submit" disabled={mutation.isPending}
               className="flex-1 py-3 bg-teal-500 hover:bg-teal-400 disabled:opacity-50 text-slate-950 font-semibold rounded-xl text-sm transition">
-              {mutation.isPending ? 'Creando…' : 'Crear ruta'}
+              {mutation.isPending ? 'CreandoÃ¢â‚¬Â¦' : 'Crear ruta'}
             </button>
           </div>
         </form>

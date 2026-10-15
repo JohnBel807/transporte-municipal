@@ -1,19 +1,19 @@
 /**
  * authStore.ts
  *
- * Estado global de autenticación con Zustand.
+ * Estado global de autenticaciÃ³n con Zustand.
  *
  * Estrategia de almacenamiento:
  * - Fuente de verdad: memoria (este store)
- * - Persistencia de sesión: sessionStorage
- * → el token desaparece si se cierra la pestaña
- * → immune a XSS de otras pestañas
+ * - Persistencia de sesiÃ³n: localStorage
+ * â†’ el token desaparece si se cierra la pestaÃ±a
+ * â†’ immune a XSS de otras pestaÃ±as
  *
- * Upgrade path a producción:
- * Reemplazar sessionStorage por httpOnly cookies gestionadas
- * desde el backend. El store en memoria no cambia — solo
- * eliminar las llamadas a sessionStorage y que el navegador
- * envíe la cookie automáticamente en cada request.
+ * Upgrade path a producciÃ³n:
+ * Reemplazar localStorage por httpOnly cookies gestionadas
+ * desde el backend. El store en memoria no cambia â€” solo
+ * eliminar las llamadas a localStorage y que el navegador
+ * envÃ­e la cookie automÃ¡ticamente en cada request.
  */
 import { create } from 'zustand'
 
@@ -37,10 +37,10 @@ interface AuthState {
   setAccessToken: (token: string) => void
 }
 
-// Rehidratar desde sessionStorage al cargar la página
+// Rehidratar desde localStorage al cargar la pÃ¡gina
 function loadSession(): Partial<AuthState> {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return {}
     return JSON.parse(raw)
   } catch {
@@ -59,21 +59,21 @@ export const useAuthStore = create<AuthState>((set) => {
 
     login: ({ accessToken, refreshToken, user }) => {
       const session = { accessToken, refreshToken, user }
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session))
       set({ ...session, isAuthenticated: true })
     },
 
     logout: () => {
-      sessionStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(SESSION_KEY)
       set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false })
     },
 
     setAccessToken: (token: string) => {
-      const raw = sessionStorage.getItem(SESSION_KEY)
+      const raw = localStorage.getItem(SESSION_KEY)
       if (raw) {
         const session = JSON.parse(raw)
         session.accessToken = token
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session))
       }
       set({ accessToken: token })
     },

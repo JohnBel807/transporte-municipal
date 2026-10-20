@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import get_pool, close_database
 from app.core.config import settings
 from app.routers import auth_routes, route_routes, ws_routes, admin_routes
+from app.routers import taxi_routes
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level, logging.INFO),
@@ -42,6 +43,7 @@ app.include_router(auth_routes.router)
 app.include_router(route_routes.router)
 app.include_router(ws_routes.router)
 app.include_router(admin_routes.router)
+app.include_router(taxi_routes.router)
 
 @app.get("/health", tags=["sistema"])
 async def health() -> dict:

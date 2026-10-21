@@ -57,6 +57,8 @@ export function DriverHomePage() {
   const [localPassengers, setLocalPassengers] = useState<number | null>(null)
   const [replyText,       setReplyText]       = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [taxiMode, setTaxiMode] = useState(false)
+  const [activeTaxiTrip, setActiveTaxiTrip] = useState<string | null>(null)
 
   const { data: routes = [], isLoading, error } = useQuery<Route[]>({
     queryKey: ['driver-routes'],
@@ -119,6 +121,29 @@ export function DriverHomePage() {
     },
     enabled:         !!activeRoute,
     refetchInterval: activeRoute ? 8_000 : false,
+  })
+
+    // Query estado modo taxi
+  const { data: driverStatus } = useQuery({
+    queryKey: ['driver-taxi-mode'],
+    queryFn: async () => {
+      const { data } = await api.get('/taxi/conductor/trips')
+      return data
+    },
+    retry: false,
+  })
+
+  // Mutation toggle modo taxi
+  const taxiModeMutation = useMutation({
+    mutationFn: (taxi_mode: boolean) =>
+      api.patch('/taxi/conductor/mode', { taxi_mode }),
+    onSuccess: (_, taxi_mode) => {
+      queryClient.invalidateQueries({ queryKey: ['driver-taxi-mode'] })
+      setTaxiMode(taxi_mode)
+    },
+    onError: (err: any) => {
+      alert(err?.response?.data?.detail ?? 'Error al cambiar modo')
+    },
   })
 
   const reservationMutation = useMutation({
@@ -489,7 +514,57 @@ export function DriverHomePage() {
             + Crear nueva ruta
           </button>
         )}
+                {/* Toggle modo taxi */}
+        {!activeRoute && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="text-sm font-semibold text-white">Modo de servicio</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {taxiMode
+                    ? 'Apareces en el mapa de solicitudes de taxi'
+                    : 'Activa para recibir solicitudes de taxi'}
+                </p>
+              </div>
+              <button
+                disabled={taxiModeMutation.isPending}
+                onClick={() => taxiModeMutation.mutate(!taxiMode)}
+                className={`relative w-12 h-6 rounded-full transition-colors duration-200
+                  ${taxiMode ? 'bg-teal-500' : 'bg-slate-700'}
+                  disabled:opacity-50`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow
+                  transition-transform duration-200
+                  ${taxiMode ? 'translate-x-6' : 'translate-x-0.5'}`}/>
+              </button>
+            </div>
 
+            {/* Modo taxi activo */}
+            {taxiMode && (
+              <div className="mt-3 pt-3 border-t border-slate-800">
+                <div className="flex items-center gap-2 text-xs text-teal-400 mb-3">
+                  <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"/>
+                  Disponible para viajes — GPS activo
+                </div>
+
+                {/* Viaje activo */}
+                {activeTaxiTrip ? (
+                  <TaxiTripPanel
+                    tripId={activeTaxiTrip}
+                    onComplete={() => {
+                      setActiveTaxiTrip(null)
+                      queryClient.invalidateQueries({ queryKey: ['driver-taxi-mode'] })
+                    }}
+                  />
+                ) : (
+                  <TaxiPendingRequests
+                    onAccept={(tripId) => setActiveTaxiTrip(tripId)}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div>
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">
             Mis rutas

@@ -693,3 +693,60 @@ async def get_driver_trips(
             driver.driver_id,
         )
     return [dict(r) for r in rows]
+
+@router.get("/requests/pending")
+async def get_pending_requests(
+    lat: float = 5.877,
+    lng: float = -73.669,
+    pool: Pool = Depends(get_pool),
+    driver: DriverContext = Depends(get_current_driver),
+) -> list:
+    """Conductor obtiene solicitudes de taxi pendientes cercanas."""
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT
+                   pt.id AS trip_id,
+                   pt.passenger_name,
+                   pt.origin_lat, pt.origin_lng,
+                   pt.origin_address, pt.dest_address,
+                   pt.dest_lat, pt.dest_lng,
+                   pt.is_night, pt.has_luggage, pt.has_ac,
+                   SQRT(
+                       POWER((pt.origin_lat - $1) * 111320, 2) +
+                       POWER((pt.origin_lng - $2) * 111320 * COS(RADIANS($1)), 2)
+                   ) / 1000 AS distance_km
+               FROM particular_trips pt
+               WHERE pt.status = 'solicitado'
+                 AND pt.requested_at > NOW() - INTERVAL '10 minutes'
+                 AND SQRT(
+                     POWER((pt.origin_lat - $1) * 111320, 2) +
+                     POWER((pt.origin_lng - $2) * 111320 * COS(RADIANS($1)), 2)
+                 ) / 1000 <= 10
+               ORDER BY distance_km
+               LIMIT 5""",
+            lat, lng,
+        )
+
+        result = []
+        config = await get_fare_config(conn)
+        for r in rows:
+            dist = haversine_km(
+                r["origin_lat"], r["origin_lng"],
+                r["dest_lat"] or r["origin_lat"],
+                r["dest_lng"] or r["origin_lng"],
+            )
+            est_min  = round((dist / 30) * 60)
+            est_fare = calculate_fare(
+                km=dist, minutes=est_min,
+                road_type="pavimentada",
+                is_night=r["is_night"],
+                is_holiday=False,
+                has_luggage=r["has_luggage"],
+                has_ac=r["has_ac"],
+                config=config,
+            )
+            result.append({
+                **dict(r),
+                "estimated_fare": est_fare,
+            })
+    return result

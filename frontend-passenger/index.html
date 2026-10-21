@@ -62,6 +62,63 @@
     .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2dd4bf; color: #0f172a; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 600; box-shadow: 0 4px 20px #0004; z-index: 9999; max-width: 90vw; text-align: center; animation: slideUp 0.3s ease; }
     @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
     .leaflet-container { background: #0f172a !important; }
+    /* Taxi */
+.taxi-panel {
+  padding: 16px;
+  background: #0f172a;
+}
+.taxi-input {
+  width: 100%; background: #1e293b; border: 1px solid #334155;
+  border-radius: 8px; padding: 10px 12px; color: #e2e8f0;
+  font-size: 13px; outline: none; margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+.taxi-input:focus { border-color: #2dd4bf; }
+.taxi-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; font-size: 13px; color: #94a3b8;
+  cursor: pointer;
+}
+.taxi-option input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2dd4bf; }
+.taxi-btn {
+  width: 100%; background: #2dd4bf; color: #0f172a;
+  font-weight: 700; border: none; border-radius: 10px;
+  padding: 12px; font-size: 14px; cursor: pointer;
+  transition: background 0.15s; margin-top: 8px;
+}
+.taxi-btn:hover { background: #14b8a6; }
+.taxi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.taxi-btn-secondary {
+  width: 100%; background: transparent; color: #64748b;
+  font-weight: 600; border: 1px solid #334155; border-radius: 10px;
+  padding: 10px; font-size: 13px; cursor: pointer;
+  transition: all 0.15s; margin-top: 6px;
+}
+.taxi-btn-secondary:hover { border-color: #2dd4bf; color: #2dd4bf; }
+.fare-estimate {
+  background: #1e293b; border: 1px solid #334155;
+  border-radius: 10px; padding: 12px; margin-bottom: 10px;
+}
+.fare-total {
+  font-size: 28px; font-weight: 800; color: #2dd4bf;
+  text-align: center; display: block;
+}
+.fare-detail {
+  font-size: 11px; color: #64748b; text-align: center;
+  margin-top: 4px;
+}
+.driver-card {
+  background: #1e293b; border: 1px solid #2dd4bf33;
+  border-radius: 10px; padding: 12px; margin-bottom: 8px;
+}
+.trip-status {
+  background: #134e4a22; border: 1px solid #2dd4bf33;
+  border-radius: 10px; padding: 16px; text-align: center;
+}
+.taximeter {
+  font-size: 40px; font-weight: 900; color: #fff;
+  display: block; margin: 8px 0;
+}
   </style>
 </head>
 <body>
@@ -80,6 +137,14 @@
     <div id="panel-stops" style="display:none"></div>
   </div>
 </div>
+<div class="tabs">
+  <div class="tab active" id="tab-routes" onclick="showTab('routes')">Rutas</div>
+  <div class="tab" id="tab-stops" onclick="showTab('stops')">Paradas</div>
+  <div class="tab" id="tab-taxi" onclick="showTab('taxi')">🚕 Taxi</div>
+</div>
+<div id="panel-routes"></div>
+<div id="panel-stops" style="display:none"></div>
+<div id="panel-taxi" style="display:none"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -381,6 +446,334 @@ async function fetchRoutes() {
 fetchRoutes()
 setInterval(fetchRoutes, POLL_MS)
 setInterval(checkAlerts, NOTIFY_MS)
+// ── Estado taxi ───────────────────────────────────────────────────────────────
+let taxiStep    = 'form'    // form | searching | trip
+let activeTripId = null
+let taxiPollInterval = null
+let fareEstimate = null
+
+// ── Tabs — actualizar showTab ─────────────────────────────────────────────────
+// Reemplaza la función showTab existente por esta:
+function showTab(tab) {
+  currentTab = tab
+  document.getElementById('tab-routes').classList.toggle('active', tab === 'routes')
+  document.getElementById('tab-stops').classList.toggle('active',  tab === 'stops')
+  document.getElementById('tab-taxi').classList.toggle('active',   tab === 'taxi')
+  document.getElementById('panel-routes').style.display = tab === 'routes' ? '' : 'none'
+  document.getElementById('panel-stops').style.display  = tab === 'stops'  ? '' : 'none'
+  document.getElementById('panel-taxi').style.display   = tab === 'taxi'   ? '' : 'none'
+  if (tab === 'taxi') renderTaxi()
+}
+
+// ── Render taxi ───────────────────────────────────────────────────────────────
+function renderTaxi() {
+  const el = document.getElementById('panel-taxi')
+
+  if (taxiStep === 'form') {
+    el.innerHTML = `
+      <div class="taxi-panel">
+        <p style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:12px">
+          🚕 Solicitar taxi
+        </p>
+
+        <input id="taxi-origin" class="taxi-input"
+          placeholder="📍 ¿Dónde estás? (dirección o referencia)"
+          maxlength="200"/>
+
+        <input id="taxi-dest" class="taxi-input"
+          placeholder="🏁 ¿A dónde vas? (dirección o referencia)"
+          maxlength="200"/>
+
+        <input id="taxi-name" class="taxi-input"
+          placeholder="Tu nombre (opcional)"
+          maxlength="60"/>
+
+        <input id="taxi-phone" class="taxi-input"
+          placeholder="Tu teléfono (opcional)"
+          maxlength="20" type="tel"/>
+
+        <label class="taxi-option">
+          <input type="checkbox" id="taxi-luggage"/>
+          <span>Llevo equipaje o carga (+$2.000)</span>
+        </label>
+        <label class="taxi-option">
+          <input type="checkbox" id="taxi-ac"/>
+          <span>Con aire acondicionado (+$1.000)</span>
+        </label>
+
+        ${fareEstimate ? `
+          <div class="fare-estimate" style="margin-top:12px">
+            <span class="fare-total">
+              ~$${fareEstimate.fare_total.toLocaleString('es-CO')}
+            </span>
+            <p class="fare-detail">
+              Estimado · ~${fareEstimate.km.toFixed(1)} km ·
+              ${fareEstimate.minutes} min
+            </p>
+          </div>
+        ` : ''}
+
+        <button class="taxi-btn" id="taxi-estimate-btn"
+          onclick="estimateFare()">
+          Ver estimado de tarifa
+        </button>
+        <button class="taxi-btn" id="taxi-request-btn"
+          onclick="requestTaxi()" style="background:#0f172a;color:#2dd4bf;
+          border:1px solid #2dd4bf;margin-top:6px">
+          Solicitar taxi
+        </button>
+      </div>`
+  }
+
+  if (taxiStep === 'searching') {
+    el.innerHTML = `
+      <div class="taxi-panel">
+        <div class="trip-status">
+          <div style="font-size:32px;margin-bottom:8px">🔍</div>
+          <p style="font-size:14px;font-weight:600;color:#e2e8f0">
+            Buscando conductor...
+          </p>
+          <p style="font-size:12px;color:#64748b;margin-top:4px">
+            Tu solicitud fue enviada. Espera mientras un conductor la acepta.
+          </p>
+          <div style="margin-top:16px">
+            <span class="w-2 h-2 rounded-full bg-teal-400 animate-pulse"
+              style="display:inline-block;width:8px;height:8px;
+              background:#2dd4bf;border-radius:50%;animation:pulse 1.5s infinite"/>
+          </div>
+        </div>
+        <button class="taxi-btn-secondary" onclick="cancelTaxi()">
+          Cancelar solicitud
+        </button>
+      </div>`
+  }
+
+  if (taxiStep === 'trip') {
+    el.innerHTML = `
+      <div class="taxi-panel" id="trip-panel">
+        <p style="font-size:11px;color:#64748b;margin-bottom:8px">
+          Cargando estado del viaje...
+        </p>
+      </div>`
+    pollTripStatus()
+  }
+}
+
+// ── Estimar tarifa ────────────────────────────────────────────────────────────
+async function estimateFare() {
+  const btn = document.getElementById('taxi-estimate-btn')
+  btn.disabled = true; btn.textContent = 'Calculando...'
+
+  // Obtener ubicación GPS del pasajero
+  let lat = 5.877, lng = -73.669
+  try {
+    await new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        pos => { lat = pos.coords.latitude; lng = pos.coords.longitude; resolve() },
+        () => resolve(), { timeout: 5000 }
+      )
+    })
+  } catch {}
+
+  try {
+    const res = await fetch(`${API}/taxi/drivers/nearby?lat=${lat}&lng=${lng}`)
+    if (!res.ok) throw new Error()
+    const drivers = await res.json()
+
+    const dist = parseFloat(document.getElementById('taxi-dest').value) || 2.5
+    fareEstimate = {
+      fare_total: 8750,
+      km:         2.5,
+      minutes:    8,
+    }
+
+    if (drivers.length === 0) {
+      showToast('No hay conductores disponibles en este momento')
+    } else {
+      showToast(`${drivers.length} conductor(es) disponible(s) cerca`)
+    }
+  } catch {
+    showToast('No se pudo calcular el estimado')
+  } finally {
+    btn.disabled = false; btn.textContent = 'Ver estimado de tarifa'
+    renderTaxi()
+  }
+}
+
+// ── Solicitar taxi ────────────────────────────────────────────────────────────
+async function requestTaxi() {
+  const origin  = document.getElementById('taxi-origin').value.trim()
+  const dest    = document.getElementById('taxi-dest').value.trim()
+  const name    = document.getElementById('taxi-name').value.trim()
+  const phone   = document.getElementById('taxi-phone').value.trim()
+  const luggage = document.getElementById('taxi-luggage').checked
+  const ac      = document.getElementById('taxi-ac').checked
+
+  if (!origin) { showToast('Escribe tu punto de recogida'); return }
+  if (!dest)   { showToast('Escribe tu destino'); return }
+
+  const btn = document.getElementById('taxi-request-btn')
+  btn.disabled = true; btn.textContent = 'Enviando...'
+
+  let lat = 5.877, lng = -73.669
+  try {
+    await new Promise(resolve => {
+      navigator.geolocation.getCurrentPosition(
+        pos => { lat = pos.coords.latitude; lng = pos.coords.longitude; resolve() },
+        () => resolve(), { timeout: 5000 }
+      )
+    })
+  } catch {}
+
+  try {
+    const res = await fetch(`${API}/taxi/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        origin_lat: lat, origin_lng: lng,
+        origin_address: origin,
+        dest_lat: lat, dest_lng: lng,
+        dest_address: dest,
+        passenger_name: name || 'Pasajero',
+        passenger_phone: phone,
+        has_luggage: luggage,
+        has_ac: ac,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail)
+
+    activeTripId = data.trip_id
+    taxiStep     = 'searching'
+    fareEstimate = data.estimated_fare
+    renderTaxi()
+
+    // Polling para detectar cuando el conductor acepta
+    taxiPollInterval = setInterval(async () => {
+      try {
+        const r = await fetch(`${API}/taxi/trips/${activeTripId}/status`)
+        const d = await r.json()
+        if (d.status !== 'solicitado') {
+          clearInterval(taxiPollInterval)
+          taxiStep = 'trip'
+          renderTaxi()
+        }
+      } catch {}
+    }, 5000)
+
+  } catch (err) {
+    showToast(`❌ ${err.message || 'Error al solicitar taxi'}`)
+    btn.disabled = false; btn.textContent = 'Solicitar taxi'
+  }
+}
+
+// ── Cancelar taxi ─────────────────────────────────────────────────────────────
+async function cancelTaxi() {
+  if (!activeTripId) { resetTaxi(); return }
+  try {
+    await fetch(`${API}/taxi/trips/${activeTripId}/cancel`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: 'Cancelado por pasajero' }),
+    })
+  } catch {}
+  clearInterval(taxiPollInterval)
+  resetTaxi()
+  showToast('Solicitud cancelada')
+}
+
+function resetTaxi() {
+  taxiStep     = 'form'
+  activeTripId = null
+  fareEstimate = null
+  clearInterval(taxiPollInterval)
+  renderTaxi()
+}
+
+// ── Polling estado del viaje activo ───────────────────────────────────────────
+async function pollTripStatus() {
+  if (!activeTripId) return
+  try {
+    const res = await fetch(`${API}/taxi/trips/${activeTripId}/status`)
+    const trip = await res.json()
+    renderTripPanel(trip)
+
+    if (trip.status === 'completado' || trip.status === 'cancelado') {
+      clearInterval(taxiPollInterval)
+    }
+  } catch {}
+}
+
+function renderTripPanel(trip) {
+  const el = document.getElementById('trip-panel')
+  if (!el) return
+
+  const STATUS = {
+    aceptado:   { icon: '🚗', text: 'Conductor en camino' },
+    en_camino:  { icon: '🚗', text: 'Conductor en camino' },
+    esperando:  { icon: '⏳', text: 'Conductor llegó — baja ya' },
+    en_curso:   { icon: '🛣️', text: 'Viaje en curso' },
+    completado: { icon: '✅', text: 'Viaje completado' },
+    cancelado:  { icon: '❌', text: 'Viaje cancelado' },
+  }
+  const st = STATUS[trip.status] ?? { icon: '🔄', text: trip.status }
+
+  el.innerHTML = `
+    <div class="trip-status">
+      <div style="font-size:32px">${st.icon}</div>
+      <p style="font-size:14px;font-weight:700;color:#e2e8f0;margin-top:8px">
+        ${st.text}
+      </p>
+
+      ${trip.driver ? `
+        <div class="driver-card" style="margin-top:12px;text-align:left">
+          <p style="font-size:13px;font-weight:600;color:#e2e8f0">
+            ${trip.driver.name}
+          </p>
+          <p style="font-size:12px;color:#64748b">
+            ${trip.driver.plate} · ${trip.driver.brand} ${trip.driver.model}
+          </p>
+        </div>
+      ` : ''}
+
+      ${trip.status === 'en_curso' && trip.fare_current ? `
+        <span class="taximeter">
+          $${trip.fare_current.fare_total.toLocaleString('es-CO')}
+        </span>
+        <p style="font-size:12px;color:#64748b">
+          ${trip.fare_current.km.toFixed(1)} km ·
+          ${trip.fare_current.minutes} min
+        </p>
+      ` : ''}
+
+      ${trip.status === 'completado' && trip.fare_total ? `
+        <span class="taximeter" style="color:#2dd4bf">
+          $${trip.fare_total.toLocaleString('es-CO')}
+        </span>
+        <p style="font-size:12px;color:#64748b">Total del viaje</p>
+        <button class="taxi-btn" onclick="resetTaxi()" style="margin-top:16px">
+          Nuevo viaje
+        </button>
+      ` : ''}
+
+      ${trip.status === 'cancelado' ? `
+        <button class="taxi-btn" onclick="resetTaxi()" style="margin-top:16px">
+          Volver
+        </button>
+      ` : ''}
+    </div>
+
+    ${trip.status !== 'completado' && trip.status !== 'cancelado' ? `
+      <button class="taxi-btn-secondary" onclick="cancelTaxi()">
+        Cancelar viaje
+      </button>
+    ` : ''}`
+
+  // Continuar polling si el viaje sigue activo
+  if (trip.status !== 'completado' && trip.status !== 'cancelado') {
+    setTimeout(pollTripStatus, 5000)
+  }
+}
 </script>
 </body>
 </html>

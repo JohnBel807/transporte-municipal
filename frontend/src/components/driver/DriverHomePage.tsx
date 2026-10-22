@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/apiClient'
 import { useAuthStore } from '../../store/authStore'
 import { useGPSTracking } from '../../hooks/useGPSTracking'
+import { TaxiTripPanel } from './TaxiTripPanel'
+import { TaxiPendingRequests } from './TaxiPendingRequests'
 
 interface Route {
   id:                     string

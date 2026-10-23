@@ -691,7 +691,14 @@ async function estimateFare() {
 }
 
 // ── Solicitar taxi ────────────────────────────────────────────────────────────
+// ── Solicitar taxi ────────────────────────────────────────────────────────────
 async function requestTaxi() {
+  // Evitar múltiples solicitudes activas
+  if (activeTripId) {
+    showToast('Ya tienes un viaje activo')
+    return
+  }
+
   const origin  = document.getElementById('taxi-origin').value.trim()
   const dest    = document.getElementById('taxi-dest').value.trim()
   const name    = document.getElementById('taxi-name').value.trim()
@@ -736,7 +743,7 @@ async function requestTaxi() {
     activeTripId = data.trip_id
     taxiStep     = 'searching'
     fareEstimate = data.estimated_fare
-    renderTaxi()
+    renderTaxi()  // Esto deshabilita el formulario automáticamente cambiando el estado
 
     // Polling para detectar cuando el conductor acepta
     taxiPollInterval = setInterval(async () => {

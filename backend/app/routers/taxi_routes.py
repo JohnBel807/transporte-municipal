@@ -275,6 +275,21 @@ async def request_trip(
             body.passenger_name, body.passenger_phone,
             night, body.has_luggage, body.has_ac, zone_id,
         )
+        
+        # Notificar a conductores disponibles via pg_notify
+        await conn.execute(
+            "SELECT pg_notify('taxi:new_request', $1)",
+            json.dumps({
+                "type":           "new_taxi_request",
+                "trip_id":        str(trip_id),
+                "passenger_name": body.passenger_name,
+                "origin_address": body.origin_address,
+                "dest_address":   body.dest_address,
+                "estimated_fare": est_fare["fare_total"],
+                "lat":            lat,
+                "lng":            lng,
+            }),
+        )
 
     return {
         "trip_id":        str(trip_id),

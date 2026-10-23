@@ -23,7 +23,7 @@ export function TaxiPendingRequests({
       const { data } = await api.get('/taxi/requests/pending')
       return data
     },
-    refetchInterval: 5_000,
+    refetchInterval: 8_000,
   })
 
   const acceptMutation = useMutation({

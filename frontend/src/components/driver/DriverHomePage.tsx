@@ -45,7 +45,7 @@ const QUICK_REPLIES = [
   'Ok, los espero 🤝',
   'Voy en camino 🚌',
   'Ya llegue 📍',
-  'Lleno por ahora 🙏',
+  'Lleno por now 🙏',
 ]
 
 export function DriverHomePage() {
@@ -61,6 +61,68 @@ export function DriverHomePage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [taxiMode, setTaxiMode] = useState(false)
   const [activeTaxiTrip, setActiveTaxiTrip] = useState<string | null>(null)
+
+  const taxiPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const notifiedTrips = useRef<Set<string>>(new Set())
+
+  function startTaxiPolling() {
+    if (taxiPollRef.current) return
+    taxiPollRef.current = setInterval(checkNewTaxiRequests, 8_000)
+    checkNewTaxiRequests() // verificar inmediatamente
+  }
+
+  function stopTaxiPolling() {
+    if (taxiPollRef.current) {
+      clearInterval(taxiPollRef.current)
+      taxiPollRef.current = null
+    }
+    notifiedTrips.current.clear()
+  }
+
+  async function checkNewTaxiRequests() {
+    try {
+      const { data } = await api.get('/taxi/requests/pending')
+      if (!Array.isArray(data) || data.length === 0) return
+      data.forEach((req: any) => {
+        if (notifiedTrips.current.has(req.trip_id)) return
+        notifiedTrips.current.add(req.trip_id)
+        
+        // Notificación push del navegador (removido 'vibrate' para evitar error de tipos)
+        if (Notification.permission === 'granted') {
+          const notif = new Notification('🚕 Nueva solicitud de taxi', {
+            body: `${req.passenger_name}\n${req.origin_address} → ${req.dest_address}\nTarifa estimada: $${req.estimated_fare?.fare_total?.toLocaleString('es-CO')}`,
+            icon: '/ico-192.png',
+            badge: '/ico-192.png',
+            requireInteraction: true,
+            tag: req.trip_id,
+          } as NotificationOptions)
+
+          notif.onclick = () => {
+            window.focus()
+            notif.close()
+          }
+        }
+
+        // Vibración adicional en móvil por separado
+        if ('vibrate' in navigator) {
+          navigator.vibrate([300, 100, 300, 100, 300])
+        }
+      })
+    } catch (e) {
+      console.warn('Error checking taxi requests:', e)
+    }
+  }
+
+  // Limpiar interval al desmontar
+  useEffect(() => {
+    return () => stopTaxiPolling()
+  }, [])
+
+  // Arrancar polling si ya está en modo taxi al cargar
+  useEffect(() => {
+    if (taxiMode) startTaxiPolling()
+    else stopTaxiPolling()
+  }, [taxiMode])
 
   const { data: routes = [], isLoading, error } = useQuery<Route[]>({
     queryKey: ['driver-routes'],
@@ -107,7 +169,7 @@ export function DriverHomePage() {
       const { data } = await api.get('/routes/conductor/messages')
       return data
     },
-    enabled:         !!activeRoute,
+    enabled:          !!activeRoute,
     refetchInterval: activeRoute ? 5_000 : false,
   })
 
@@ -121,11 +183,11 @@ export function DriverHomePage() {
       const { data } = await api.get('/routes/conductor/reservations')
       return data
     },
-    enabled:         !!activeRoute,
+    enabled:          !!activeRoute,
     refetchInterval: activeRoute ? 8_000 : false,
   })
 
-    // Query estado modo taxi
+  // Query estado modo taxi
   const { data: driverStatus } = useQuery({
     queryKey: ['driver-taxi-mode'],
     queryFn: async () => {
@@ -135,13 +197,19 @@ export function DriverHomePage() {
     retry: false,
   })
 
-  // Mutation toggle modo taxi
+  // Mutation toggle modo taxi con solicitud de permisos de notificación
   const taxiModeMutation = useMutation({
-    mutationFn: (taxi_mode: boolean) =>
-      api.patch('/taxi/conductor/mode', { taxi_mode }),
-    onSuccess: (_, taxi_mode) => {
+    mutationFn: async (newMode: boolean) => {
+      if (newMode && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          await Notification.requestPermission()
+        }
+      }
+      return api.patch('/taxi/conductor/mode', { taxi_mode: newMode })
+    },
+    onSuccess: (_, newMode) => {
       queryClient.invalidateQueries({ queryKey: ['driver-taxi-mode'] })
-      setTaxiMode(taxi_mode)
+      setTaxiMode(newMode)
     },
     onError: (err: any) => {
       alert(err?.response?.data?.detail ?? 'Error al cambiar modo')
@@ -516,7 +584,8 @@ export function DriverHomePage() {
             + Crear nueva ruta
           </button>
         )}
-                {/* Toggle modo taxi */}
+
+        {/* Toggle modo taxi */}
         {!activeRoute && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
@@ -560,13 +629,17 @@ export function DriverHomePage() {
                   />
                 ) : (
                   <TaxiPendingRequests
-                    onAccept={(tripId) => setActiveTaxiTrip(tripId)}
+                    onAccept={(tripId) => {
+                      setActiveTaxiTrip(tripId)
+                      stopTaxiPolling()
+                    }}
                   />
                 )}
               </div>
             )}
           </div>
         )}
+
         <div>
           <p className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-3">
             Mis rutas

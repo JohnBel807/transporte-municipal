@@ -154,6 +154,9 @@ const POLL_MS = 10_000, NOTIFY_MS = 15_000, ALERT_MIN = 2
 let routes = [], markers = {}, selected = null, waypoints = []
 let watching = {}, notified = new Set(), currentTab = 'routes'
 let msgList = [], msgPollInterval = null
+let taxiMap = null
+let taxiMarkers = {}
+let driverMarker = null
 
 const map = L.map('map', { zoomControl: true }).setView([5.95, -73.68], 11)
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -471,27 +474,21 @@ function renderTaxi() {
 
   if (taxiStep === 'form') {
     el.innerHTML = `
+      <div id="taxi-map" style="height:200px;width:100%;border-bottom:1px solid #334155"></div>
       <div class="taxi-panel">
         <p style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:12px">
           🚕 Solicitar taxi
         </p>
-
         <input id="taxi-origin" class="taxi-input"
           placeholder="📍 ¿Dónde estás? (dirección o referencia)"
           maxlength="200"/>
-
         <input id="taxi-dest" class="taxi-input"
           placeholder="🏁 ¿A dónde vas? (dirección o referencia)"
           maxlength="200"/>
-
         <input id="taxi-name" class="taxi-input"
-          placeholder="Tu nombre (opcional)"
-          maxlength="60"/>
-
+          placeholder="Tu nombre (opcional)" maxlength="60"/>
         <input id="taxi-phone" class="taxi-input"
-          placeholder="Tu teléfono (opcional)"
-          maxlength="20" type="tel"/>
-
+          placeholder="Tu teléfono (opcional)" maxlength="20" type="tel"/>
         <label class="taxi-option">
           <input type="checkbox" id="taxi-luggage"/>
           <span>Llevo equipaje o carga (+$2.000)</span>
@@ -500,7 +497,6 @@ function renderTaxi() {
           <input type="checkbox" id="taxi-ac"/>
           <span>Con aire acondicionado (+$1.000)</span>
         </label>
-
         ${fareEstimate ? `
           <div class="fare-estimate" style="margin-top:12px">
             <span class="fare-total">
@@ -510,19 +506,18 @@ function renderTaxi() {
               Estimado · ~${fareEstimate.km.toFixed(1)} km ·
               ${fareEstimate.minutes} min
             </p>
-          </div>
-        ` : ''}
-
-        <button class="taxi-btn" id="taxi-estimate-btn"
-          onclick="estimateFare()">
+          </div>` : ''}
+        <button class="taxi-btn" id="taxi-estimate-btn" onclick="estimateFare()">
           Ver estimado de tarifa
         </button>
-        <button class="taxi-btn" id="taxi-request-btn"
-          onclick="requestTaxi()" style="background:#0f172a;color:#2dd4bf;
-          border:1px solid #2dd4bf;margin-top:6px">
+        <button class="taxi-btn" id="taxi-request-btn" onclick="requestTaxi()"
+          style="background:#0f172a;color:#2dd4bf;border:1px solid #2dd4bf;margin-top:6px">
           Solicitar taxi
         </button>
       </div>`
+
+    // Inicializar mapa de taxi
+    setTimeout(() => initTaxiMap(), 100)
   }
 
   if (taxiStep === 'searching') {
@@ -537,8 +532,7 @@ function renderTaxi() {
             Tu solicitud fue enviada. Espera mientras un conductor la acepta.
           </p>
           <div style="margin-top:16px">
-            <span class="w-2 h-2 rounded-full bg-teal-400 animate-pulse"
-              style="display:inline-block;width:8px;height:8px;
+            <span style="display:inline-block;width:8px;height:8px;
               background:#2dd4bf;border-radius:50%;animation:pulse 1.5s infinite"/>
           </div>
         </div>
@@ -550,12 +544,108 @@ function renderTaxi() {
 
   if (taxiStep === 'trip') {
     el.innerHTML = `
+      <div id="taxi-map" style="height:220px;width:100%;border-bottom:1px solid #334155"></div>
       <div class="taxi-panel" id="trip-panel">
         <p style="font-size:11px;color:#64748b;margin-bottom:8px">
           Cargando estado del viaje...
         </p>
       </div>`
-    pollTripStatus()
+    setTimeout(() => {
+      initTaxiMap()
+      pollTripStatus()
+    }, 100)
+  }
+}
+
+// ── Mapa de taxi ──────────────────────────────────────────────────────────────
+function initTaxiMap() {
+  const container = document.getElementById('taxi-map')
+  if (!container) return
+
+  // Si ya existe el mapa lo destruye
+  if (taxiMap) { taxiMap.remove(); taxiMap = null; taxiMarkers = {} }
+
+  taxiMap = L.map('taxi-map', { zoomControl: false })
+    .setView([5.9333, -73.6167], 13)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 18,
+  }).addTo(taxiMap)
+
+  // Centrar en ubicación del pasajero
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      const lat = pos.coords.latitude
+      const lng = pos.coords.longitude
+      taxiMap.setView([lat, lng], 14)
+
+      // Marcador del pasajero
+      L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="width:14px;height:14px;background:#6366f1;
+                            border:2px solid #0f172a;border-radius:50%;
+                            box-shadow:0 0 0 4px #6366f133"></div>`,
+          iconSize: [14, 14], iconAnchor: [7, 7],
+        })
+      }).bindPopup('Tu ubicación').addTo(taxiMap)
+
+      loadNearbyDrivers(lat, lng)
+    }, () => loadNearbyDrivers(5.9333, -73.6167))
+  } else {
+    loadNearbyDrivers(5.9333, -73.6167)
+  }
+}
+
+async function loadNearbyDrivers(lat, lng) {
+  try {
+    const res = await fetch(
+      `${API}/taxi/drivers/nearby?lat=${lat}&lng=${lng}&radius_km=10`
+    )
+    if (!res.ok) return
+    const drivers = await res.json()
+
+    // Limpiar marcadores anteriores
+    Object.values(taxiMarkers).forEach(m => m.remove())
+    taxiMarkers = {}
+
+    if (drivers.length === 0) {
+      showToast('No hay taxis disponibles cerca en este momento')
+      return
+    }
+
+    drivers.forEach(d => {
+      const marker = L.marker([d.lat ?? 5.9333, d.lng ?? -73.6167], {
+        icon: L.divIcon({
+          className: '',
+          html: `
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+              <div style="background:#1e293b;border:1px solid #fbbf24;
+                          color:#fbbf24;font-size:10px;font-weight:600;
+                          padding:1px 5px;border-radius:4px;white-space:nowrap">
+                🚕 ${d.full_name.split(' ')[0]}
+              </div>
+              <div style="width:10px;height:10px;background:#fbbf24;
+                          border:2px solid #0f172a;border-radius:50%;
+                          box-shadow:0 0 0 3px #fbbf2444"></div>
+            </div>`,
+          iconSize: [80, 30], iconAnchor: [40, 30],
+        })
+      })
+      .bindPopup(`
+        <div style="font-size:13px;line-height:1.6">
+          <b>${d.full_name}</b><br/>
+          ${d.plate} · ${d.brand} ${d.model}<br/>
+          ★ ${d.avg_rating.toFixed(1)} · ${d.distance_km.toFixed(1)} km<br/>
+          ETA ~${d.eta_min} min
+        </div>`)
+      .addTo(taxiMap)
+
+      taxiMarkers[d.driver_id] = marker
+    })
+
+    showToast(`${drivers.length} taxi(s) disponible(s) cerca`)
+  } catch (e) {
+    console.warn('Error cargando taxis:', e)
   }
 }
 
@@ -686,7 +776,9 @@ function resetTaxi() {
   taxiStep     = 'form'
   activeTripId = null
   fareEstimate = null
+  driverMarker = null
   clearInterval(taxiPollInterval)
+  if (taxiMap) { taxiMap.remove(); taxiMap = null; taxiMarkers = {} }
   renderTaxi()
 }
 
@@ -694,12 +786,46 @@ function resetTaxi() {
 async function pollTripStatus() {
   if (!activeTripId) return
   try {
-    const res = await fetch(`${API}/taxi/trips/${activeTripId}/status`)
+    const res  = await fetch(`${API}/taxi/trips/${activeTripId}/status`)
     const trip = await res.json()
     renderTripPanel(trip)
 
+    // Mostrar conductor en el mapa durante el viaje
+    if (taxiMap && trip.driver &&
+        trip.driver.lat && trip.driver.lng) {
+      const pos = [trip.driver.lat, trip.driver.lng]
+      if (driverMarker) {
+        driverMarker.setLatLng(pos)
+      } else {
+        driverMarker = L.marker(pos, {
+          icon: L.divIcon({
+            className: '',
+            html: `
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+                <div style="background:#1e293b;border:1px solid #fbbf24;
+                            color:#fbbf24;font-size:10px;font-weight:600;
+                            padding:1px 5px;border-radius:4px;white-space:nowrap">
+                  🚕 ${trip.driver.name?.split(' ')[0] ?? 'Conductor'}
+                </div>
+                <div style="width:12px;height:12px;background:#fbbf24;
+                            border:2px solid #0f172a;border-radius:50%;
+                            box-shadow:0 0 0 4px #fbbf2444"></div>
+              </div>`,
+            iconSize: [80, 30], iconAnchor: [40, 30],
+          })
+        }).bindPopup(`
+          <b>${trip.driver.name}</b><br/>
+          ${trip.driver.plate}`
+        ).addTo(taxiMap)
+      }
+      taxiMap.panTo(pos)
+    }
+
     if (trip.status === 'completado' || trip.status === 'cancelado') {
       clearInterval(taxiPollInterval)
+      driverMarker = null
+    } else {
+      setTimeout(pollTripStatus, 5000)
     }
   } catch {}
 }

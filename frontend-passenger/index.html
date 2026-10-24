@@ -1,47 +1,66 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Transporte en línea — Vélez & Ricaurte</title>
+  <title>Transporte en Línea</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; width: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #f8fafc; overflow: hidden; }
-    #app { display: flex; flex-direction: column; height: 100vh; width: 100vw; max-width: 600px; margin: 0 auto; background: #0f172a; position: relative; }
-    header { background: #1e293b; padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0b0f19; color: #f8fafc; height: 100vh; width: 100vw; overflow: hidden; display: flex; justify-content: center; align-items: center; }
+    
+    /* Adaptación Pantalla Completa en Escritorio */
+    #app { width: 100%; height: 100vh; display: flex; flex-direction: column; background: #0f172a; position: relative; overflow: hidden; }
+    
+    header { background: #1e293b; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; flex-shrink: 0; z-index: 10; }
     header h1 { font-size: 16px; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px; }
     header p { font-size: 11px; color: #64748b; margin-top: 2px; }
-    .badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 12px; }
-    .badge-live { background: #134e4a; color: #2dd4bf; border: 1px solid #2dd4bf44; }
-    .badge-none { background: #334155; color: #94a3b8; }
     
+    .badge { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: 1px solid; }
+    .badge-live { color: #2dd4bf; border-color: #2dd4bf33; background: #2dd4bf11; }
+    .badge-none { color: #64748b; border-color: #334155; background: #1e293b; }
+
     .tabs { display: flex; border-bottom: 1px solid #334155; background: #1e293b; z-index: 10; flex-shrink: 0; }
     .tab { flex: 1; padding: 12px; text-align: center; font-size: 13px; font-weight: 600; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
     .tab.active { color: #2dd4bf; border-bottom-color: #2dd4bf; }
-    
-    .panel-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-    #panel-colectivos { display: flex; flex-direction: column; height: 100%; width: 100%; flex: 1; overflow: hidden; }
-    #panel-taxi { height: 100%; overflow-y: auto; background: #0f172a; display: flex; flex-direction: column; }
-    
-    /* El mapa de colectivos ocupa todo el espacio flex disponible */
-    #map { flex: 1; min-height: 180px; width: 100%; z-index: 1; background: #0f172a; transition: height 0.2s ease; }
-    #taxi-map { height: 210px; width: 100%; flex-shrink: 0; background: #0f172a; }
 
-    .colectivos-content { display: flex; flex-direction: column; max-height: 60%; overflow-y: auto; background: #1e293b; border-top: 1px solid #334155; flex-shrink: 0; }
+    .panel-container { flex: 1; display: flex; width: 100%; height: 100%; overflow: hidden; position: relative; }
     
-    .route-card { padding: 12px 16px; border-bottom: 1px solid #0f172a; background: #0f172a; cursor: pointer; transition: background 0.15s; }
+    /* VISTA COLECTIVOS EN ESCRITORIO Y MÓVIL */
+    #panel-colectivos { display: flex; width: 100%; height: 100%; flex: 1; overflow: hidden; }
+    #panel-taxi { width: 100%; height: 100%; display: flex; overflow: hidden; }
+
+    /* Mapa en escritorio a pantalla completa */
+    #map { flex: 1; height: 100%; width: 100%; z-index: 1; background: #0f172a; }
+    #taxi-map { flex: 1; height: 100%; width: 100%; z-index: 1; background: #0f172a; }
+
+    .colectivos-content { width: 380px; height: 100%; display: flex; flex-direction: column; background: #1e293b; border-right: 1px solid #334155; overflow-y: auto; flex-shrink: 0; z-index: 2; }
+    .taxi-panel { width: 380px; height: 100%; padding: 20px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; z-index: 2; }
+
+    /* Layout Móvil (Dispositivos pequeños < 768px) */
+    @media (max-width: 767px) {
+      #panel-colectivos { flex-direction: column-reverse; }
+      #panel-taxi { flex-direction: column-reverse; }
+      
+      .colectivos-content { width: 100%; max-height: 50%; border-right: none; border-top: 1px solid #334155; }
+      .taxi-panel { width: 100%; height: auto; border-right: none; border-top: 1px solid #334155; }
+      
+      #map { height: 100%; }
+      #taxi-map { height: 220px; }
+    }
+
+    .route-card { padding: 14px 16px; border-bottom: 1px solid #0f172a; background: #0f172a; cursor: pointer; transition: background 0.15s; }
     .route-card:hover { background: #1e293b; }
     .route-card.selected { background: #134e4a22; border-left: 3px solid #2dd4bf; }
     .route-name { font-size: 14px; font-weight: 600; color: #f1f5f9; }
-    .route-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .route-meta { font-size: 12px; color: #64748b; margin-top: 4px; }
     .route-row { display: flex; justify-content: space-between; align-items: center; }
     .seats { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; border: 1px solid; }
     .seats-ok   { color: #2dd4bf; border-color: #2dd4bf33; background: #2dd4bf11; }
     .seats-few  { color: #fbbf24; border-color: #fbbf2433; background: #fbbf2411; }
     .seats-full { color: #f87171; border-color: #f8717133; background: #f8717111; }
-    
+
     .waypoint-item { padding: 10px 16px; border-bottom: 1px solid #0f172a; display: flex; align-items: center; gap: 12px; }
     .waypoint-item.passed { opacity: 0.4; }
     .waypoint-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #2dd4bf; background: transparent; flex-shrink: 0; }
@@ -50,15 +69,15 @@
     .waypoint-info { flex: 1; min-width: 0; }
     .waypoint-name { font-size: 13px; font-weight: 500; color: #e2e8f0; }
     .waypoint-eta  { font-size: 11px; color: #64748b; margin-top: 2px; }
-    
+
     .notify-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 8px; border: 1px solid; cursor: pointer; transition: all 0.15s; white-space: nowrap; background: transparent; }
     .notify-btn.off { color: #64748b; border-color: #334155; }
     .notify-btn.off:hover { color: #2dd4bf; border-color: #2dd4bf; }
     .notify-btn.on { color: #0f172a; background: #2dd4bf; border-color: #2dd4bf; font-weight: 700; }
-    
-    .msg-panel { padding: 12px 16px; border-top: 1px solid #334155; background: #0f172a; }
+
+    .msg-panel { padding: 14px 16px; border-top: 1px solid #334155; background: #0f172a; }
     .msg-panel-title { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; }
-    .msg-list { margin-bottom: 10px; max-height: 100px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .msg-list { margin-bottom: 10px; max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
     .msg-bubble { padding: 6px 10px; border-radius: 8px; font-size: 12px; }
     .msg-bubble.pasajero { background: #1e293b; color: #e2e8f0; align-self: flex-start; }
     .msg-bubble.conductor { background: #134e4a; color: #2dd4bf; border: 1px solid #2dd4bf33; align-self: flex-end; }
@@ -70,13 +89,12 @@
     .msg-input:focus { border-color: #2dd4bf; }
     .msg-send { background: #2dd4bf; color: #0f172a; font-weight: 700; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
     .msg-send:hover { background: #14b8a6; }
-    
-    .empty-state { text-align: center; padding: 24px 16px; color: #475569; font-size: 13px; }
+
+    .empty-state { text-align: center; padding: 32px 16px; color: #475569; font-size: 13px; }
     .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2dd4bf; color: #0f172a; padding: 12px 20px; border-radius: 12px; font-size: 13px; font-weight: 600; box-shadow: 0 4px 20px #0004; z-index: 9999; max-width: 90vw; text-align: center; }
-    
-    /* Taxi */
-    .taxi-panel { padding: 16px; background: #0f172a; flex: 1; }
-    .taxi-input { width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 13px; outline: none; margin-bottom: 8px; }
+
+    /* Taxi input */
+    .taxi-input { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 13px; outline: none; margin-bottom: 12px; }
     .taxi-btn { width: 100%; background: #2dd4bf; color: #0f172a; font-weight: 700; border: none; border-radius: 10px; padding: 12px; font-size: 14px; cursor: pointer; margin-top: 8px; }
   </style>
 </head>
@@ -99,39 +117,43 @@
   <div class="panel-container">
     <!-- VISTA COLECTIVOS -->
     <div id="panel-colectivos">
+      <div class="colectivos-content" id="colectivos-list"></div>
       <div id="map"></div>
-      <div id="colectivos-list" class="colectivos-content"></div>
     </div>
 
     <!-- VISTA TAXI -->
     <div id="panel-taxi" style="display:none">
-      <div id="taxi-map"></div>
       <div class="taxi-panel">
+        <h2 style="font-size:15px;margin-bottom:16px;color:#f8fafc">Pedir Taxi</h2>
         <input type="text" id="taxi-origin" class="taxi-input" placeholder="Tu ubicación de origen"/>
         <input type="text" id="taxi-destination" class="taxi-input" placeholder="¿A dónde vas?"/>
         <button class="taxi-btn" onclick="requestTaxi()">Solicitar Taxi</button>
       </div>
+      <div id="taxi-map"></div>
     </div>
   </div>
 </div>
 
 <script>
-  const API = window.location.origin.includes('localhost') ? 'http://localhost:8000' : 'https://admin.velezyricaurte.com/api'
-  let currentTab = 'colectivos'
-  let map, taxiMap
-  let routes = []
-  let selected = null
-  let waypoints = []
-  let watching = {}
-  let markers = {}
+  const API = 'https://bus.velezyricaurte.com/api'
+  let map, taxiMap, markers = {}, taxiMarker = null
+  let routes = [], waypoints = [], watching = {}, notified = new Set()
+  let selected = null, currentTab = 'colectivos'
+  let msgList = [], msgPollInterval = null
   let activeTripId = null
 
-  function initMaps() {
-    map = L.map('map').setView([5.93, -73.67], 13)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)
+  function initMap() {
+    map = L.map('map', { zoomControl: true }).setView([6.0134, -73.6732], 13)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map)
 
-    taxiMap = L.map('taxi-map').setView([5.93, -73.67], 13)
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(taxiMap)
+    taxiMap = L.map('taxi-map', { zoomControl: true }).setView([6.0134, -73.6732], 13)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(taxiMap)
   }
 
   function showTab(tab) {
@@ -161,37 +183,77 @@
       badge.textContent = 'Sin servicio'
     }
 
-    // Lista de rutas
+    const activeIds = new Set(routes.map(r => r.route_id))
+    Object.keys(markers).forEach(id => {
+      if (!activeIds.has(id)) { markers[id].remove(); delete markers[id] }
+    })
+
+    routes.forEach(r => {
+      const color = r.signal_status === 'live' ? '#2dd4bf' : r.signal_status === 'stale' ? '#fbbf24' : '#f87171'
+      const icon = makeIcon(color, r.route_name)
+      const popup = `<div style="font-size:13px;line-height:1.6">
+        <b>${r.route_name}</b><br/>
+        ${r.passengers_aboard}/${r.capacity} pasajeros · ${r.speed_kmh} km/h<br/>
+        → ${r.next_stop}${r.eta_seconds ? ` (${etaLabel(r.eta_seconds)})` : ''}
+      </div>`
+
+      if (markers[r.route_id]) {
+        markers[r.route_id].setLatLng([r.lat, r.lng]).setIcon(icon)
+        markers[r.route_id].getPopup()?.setContent(popup)
+      } else {
+        markers[r.route_id] = L.marker([r.lat, r.lng], { icon })
+          .bindPopup(popup)
+          .on('click', () => selectRoute(r.route_id))
+          .addTo(map)
+      }
+    })
+
     const routesHtml = routes.length === 0
-      ? `<div class="empty-state">No hay colectivos en servicio actualmente</div>`
+      ? `<div class="empty-state">
+           No hay colectivos en servicio<br/>
+           <span style="font-size:24px;display:block;margin-top:12px">🕐</span>
+         </div>`
       : routes.map(r => `
           <div class="route-card ${selected === r.route_id ? 'selected' : ''}" onclick="selectRoute('${r.route_id}')">
             <div class="route-row">
               <span class="route-name">${r.route_name}</span>
-              <span class="seats seats-ok">${r.seats_available ?? 4} puestos</span>
+              <span class="seats ${seatsClass(r.seats_available, r.capacity)}">
+                ${seatsLabel(r.seats_available)}
+              </span>
             </div>
-            <div class="route-meta">→ ${r.next_stop || 'En ruta'} · $${Number(r.base_fare || 3200).toLocaleString('es-CO')}</div>
+            <div class="route-meta">
+              → ${r.next_stop} ${r.eta_seconds ? `· llega en ${etaLabel(r.eta_seconds)}` : ''} · $${Number(r.base_fare).toLocaleString('es-CO')}
+            </div>
           </div>`).join('')
 
     let stopsHtml = ''
     if (selected) {
       if (waypoints.length === 0) {
-        stopsHtml = `<div style="padding:10px 16px;font-size:12px;color:#64748b">Cargando paradas...</div>`
+        stopsHtml = `<div style="padding:12px 16px;font-size:12px;color:#64748b">Cargando paradas...</div>`
       } else {
-        const wpHtml = waypoints.map(wp => `
-          <div class="waypoint-item ${wp.already_passed ? 'passed' : ''}">
-            <div class="waypoint-dot ${wp.is_terminal ? 'terminal' : ''}"></div>
-            <div class="waypoint-info">
-              <div class="waypoint-name">${wp.place_name}</div>
-              <div class="waypoint-eta">${wp.already_passed ? 'Ya pasó' : 'En camino'}</div>
-            </div>
-          </div>`).join('')
+        const wpHtml = waypoints.map(wp => {
+          const passed = wp.already_passed
+          const isWatch = watching[wp.id]
+          const etaTxt = wp.eta_minutes !== null ? `~${Math.ceil(wp.eta_minutes)} min` : wp.distance_m ? `${(wp.distance_m/1000).toFixed(1)} km` : 'Sin datos'
+          return `
+            <div class="waypoint-item ${passed ? 'passed' : ''}">
+              <div class="waypoint-dot ${wp.is_terminal ? 'terminal' : ''} ${passed ? 'passed' : ''}"></div>
+              <div class="waypoint-info">
+                <div class="waypoint-name">${wp.place_name}</div>
+                <div class="waypoint-eta">${passed ? 'Ya pasó' : etaTxt}</div>
+              </div>
+              ${!passed ? `
+                <button class="notify-btn ${isWatch ? 'on' : 'off'}" onclick="toggleWatch('${wp.id}', '${wp.place_name.replace(/'/g, "\\'")}')">
+                  ${isWatch ? '🔔 Activado' : '🔕 Avisar'}
+                </button>` : ''}
+            </div>`
+        }).join('')
 
         stopsHtml = `
-          <div style="border-top:1px solid #334155;background:#0f172a">
-            <div style="padding:8px 16px;font-size:11px;color:#2dd4bf;font-weight:600;display:flex;justify-content:space-between">
-              <span>Paradas — ${routes.find(r => r.route_id === selected)?.route_name ?? ''}</span>
-              <button onclick="selectRoute(null)" style="background:none;border:none;color:#64748b;cursor:pointer">✕ Cerrar</button>
+          <div style="border-top:2px solid #2dd4bf22;margin-top:4px">
+            <div style="padding:10px 16px;font-size:11px;color:#2dd4bf;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">
+              Paradas — ${routes.find(r => r.route_id === selected)?.route_name ?? ''}
+              <button onclick="selectRoute(null)" style="float:right;background:none;border:none;color:#64748b;cursor:pointer;font-size:12px">✕ Cerrar</button>
             </div>
             ${wpHtml}
           </div>`
@@ -199,48 +261,63 @@
     }
 
     el.innerHTML = routesHtml + stopsHtml
-    
-    // Notificar al mapa para reajustar tamaño si la lista creció o se redujo
-    if (map) setTimeout(() => map.invalidateSize(), 50)
+    setTimeout(() => map.invalidateSize(), 100)
   }
 
   function selectRoute(id) {
-    selected = (selected === id) ? null : id
-    if (selected) {
-      loadWaypoints(selected)
-    } else {
-      waypoints = []
+    selected = id
+    if (id === null) {
+      waypoints = []; watching = {}; notified = new Set(); msgList = []
+      if (msgPollInterval) clearInterval(msgPollInterval)
+      renderColectivos()
+      return
     }
+    waypoints = []; watching = {}; notified = new Set(); msgList = []
+    if (msgPollInterval) clearInterval(msgPollInterval)
+    const r = routes.find(r => r.route_id === id)
+    if (r) { map.flyTo([r.lat, r.lng], 14, { duration: 0.8 }); markers[id]?.openPopup() }
+    loadWaypoints(id)
     renderColectivos()
   }
 
   async function fetchRoutes() {
     try {
       const res = await fetch(`${API}/routes/public/active`)
-      if (res.ok) routes = await res.json()
+      if (!res.ok) throw new Error(res.status)
+      routes = await res.json()
     } catch (e) {
-      console.warn('Error fetching routes', e)
+      console.warn('Error cargando rutas:', e)
     }
     renderColectivos()
+    if (selected) loadWaypoints(selected)
   }
 
   async function loadWaypoints(routeId) {
     try {
       const res = await fetch(`${API}/routes/public/${routeId}/waypoints`)
-      if (res.ok) waypoints = await res.json()
+      if (!res.ok) return
+      waypoints = await res.json()
+      renderColectivos()
     } catch (e) {
-      console.warn('Error loading waypoints', e)
+      console.warn('Error cargando paradas:', e)
     }
-    renderColectivos()
   }
 
-  function requestTaxi() {
-    if (activeTripId) return alert('Ya tienes un viaje activo')
-    alert('Solicitud de taxi enviada')
+  function makeIcon(color, name) {
+    return L.divIcon({
+      className: '',
+      html: `<div style="background:${color};width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 10px ${color}88"></div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    })
   }
+
+  function seatsClass(s, cap) { return s <= 0 ? 'seats-full' : s <= 3 ? 'seats-few' : 'seats-ok' }
+  function seatsLabel(s) { return s <= 0 ? 'Lleno' : `${s} puestos` }
+  function etaLabel(s) { return s < 60 ? '1 min' : `${Math.round(s/60)} min` }
 
   window.onload = () => {
-    initMaps()
+    initMap()
     fetchRoutes()
     setInterval(fetchRoutes, 10000)
   }

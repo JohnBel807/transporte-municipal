@@ -10,15 +10,18 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
     #app { display: flex; flex-direction: column; height: 100dvh; }
-    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+    header { background: #1e293b; border-bottom: 1px solid #334155; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
     header h1 { font-size: 15px; font-weight: 600; }
     header p  { font-size: 12px; color: #64748b; }
     .badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px; border: 1px solid; }
     .badge-live { color: #2dd4bf; border-color: #2dd4bf33; background: #2dd4bf11; }
     .badge-none { color: #64748b; border-color: #33415533; background: transparent; }
-    #map { height: 220px; width: 100%; }
-    .panel { background: #1e293b; border-top: 1px solid #334155; max-height: 55vh; overflow-y: auto; }
-    .tabs { display: flex; border-bottom: 1px solid #334155; position: sticky; top: 0; background: #1e293b; z-index: 10; }
+    
+    /* Ambos mapas con altura fija idéntica para evitar espacios vacíos */
+    #map, #taxi-map { height: 210px !important; width: 100%; flex-shrink: 0; }
+
+    .panel { background: #1e293b; border-top: 1px solid #334155; flex: 1; overflow-y: auto; }
+    .tabs { display: flex; border-bottom: 1px solid #334155; position: sticky; top: 0; background: #1e293b; z-index: 10; flex-shrink: 0; }
     .tab { flex: 1; padding: 10px; text-align: center; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
     .tab.active { color: #2dd4bf; border-bottom-color: #2dd4bf; }
     .route-card { padding: 12px 16px; border-bottom: 1px solid #0f172a; background: #0f172a; cursor: pointer; transition: background 0.15s; }
@@ -63,62 +66,22 @@
     @keyframes slideUp { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
     .leaflet-container { background: #0f172a !important; }
     /* Taxi */
-.taxi-panel {
-  padding: 16px;
-  background: #0f172a;
-}
-.taxi-input {
-  width: 100%; background: #1e293b; border: 1px solid #334155;
-  border-radius: 8px; padding: 10px 12px; color: #e2e8f0;
-  font-size: 13px; outline: none; margin-bottom: 8px;
-  transition: border-color 0.15s;
-}
-.taxi-input:focus { border-color: #2dd4bf; }
-.taxi-option {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 0; font-size: 13px; color: #94a3b8;
-  cursor: pointer;
-}
-.taxi-option input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2dd4bf; }
-.taxi-btn {
-  width: 100%; background: #2dd4bf; color: #0f172a;
-  font-weight: 700; border: none; border-radius: 10px;
-  padding: 12px; font-size: 14px; cursor: pointer;
-  transition: background 0.15s; margin-top: 8px;
-}
-.taxi-btn:hover { background: #14b8a6; }
-.taxi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.taxi-btn-secondary {
-  width: 100%; background: transparent; color: #64748b;
-  font-weight: 600; border: 1px solid #334155; border-radius: 10px;
-  padding: 10px; font-size: 13px; cursor: pointer;
-  transition: all 0.15s; margin-top: 6px;
-}
-.taxi-btn-secondary:hover { border-color: #2dd4bf; color: #2dd4bf; }
-.fare-estimate {
-  background: #1e293b; border: 1px solid #334155;
-  border-radius: 10px; padding: 12px; margin-bottom: 10px;
-}
-.fare-total {
-  font-size: 28px; font-weight: 800; color: #2dd4bf;
-  text-align: center; display: block;
-}
-.fare-detail {
-  font-size: 11px; color: #64748b; text-align: center;
-  margin-top: 4px;
-}
-.driver-card {
-  background: #1e293b; border: 1px solid #2dd4bf33;
-  border-radius: 10px; padding: 12px; margin-bottom: 8px;
-}
-.trip-status {
-  background: #134e4a22; border: 1px solid #2dd4bf33;
-  border-radius: 10px; padding: 16px; text-align: center;
-}
-.taximeter {
-  font-size: 40px; font-weight: 900; color: #fff;
-  display: block; margin: 8px 0;
-}
+    .taxi-panel { padding: 16px; background: #0f172a; }
+    .taxi-input { width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 13px; outline: none; margin-bottom: 8px; transition: border-color 0.15s; }
+    .taxi-input:focus { border-color: #2dd4bf; }
+    .taxi-option { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 13px; color: #94a3b8; cursor: pointer; }
+    .taxi-option input[type="checkbox"] { width: 16px; height: 16px; accent-color: #2dd4bf; }
+    .taxi-btn { width: 100%; background: #2dd4bf; color: #0f172a; font-weight: 700; border: none; border-radius: 10px; padding: 12px; font-size: 14px; cursor: pointer; transition: background 0.15s; margin-top: 8px; }
+    .taxi-btn:hover { background: #14b8a6; }
+    .taxi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .taxi-btn-secondary { width: 100%; background: transparent; color: #64748b; font-weight: 600; border: 1px solid #334155; border-radius: 10px; padding: 10px; font-size: 13px; cursor: pointer; transition: all 0.15s; margin-top: 6px; }
+    .taxi-btn-secondary:hover { border-color: #2dd4bf; color: #2dd4bf; }
+    .fare-estimate { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+    .fare-total { font-size: 28px; font-weight: 800; color: #2dd4bf; text-align: center; display: block; }
+    .fare-detail { font-size: 11px; color: #64748b; text-align: center; margin-top: 4px; }
+    .driver-card { background: #1e293b; border: 1px solid #2dd4bf33; border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+    .trip-status { background: #134e4a22; border: 1px solid #2dd4bf33; border-radius: 10px; padding: 16px; text-align: center; }
+    .taximeter { font-size: 40px; font-weight: 900; color: #fff; display: block; margin: 8px 0; }
   </style>
 </head>
 <body>
@@ -127,24 +90,24 @@
     <div><h1>🚌 Transporte en linea</h1><p>Velez &amp; Ricaurte</p></div>
     <span id="status-badge" class="badge badge-none">Cargando...</span>
   </header>
-  <div id="map"></div>
-  <div class="panel">
-    <div class="tabs">
-      <div class="tab active" id="tab-routes" onclick="showTab('routes')">Rutas</div>
-      <div class="tab" id="tab-stops" onclick="showTab('stops')">Paradas</div>
-    </div>
-    <div id="panel-routes"></div>
-    <div id="panel-stops" style="display:none"></div>
+
+  <!-- Pestañas de navegación unificadas arriba -->
+  <div class="tabs">
+    <div class="tab active" id="tab-taxi" onclick="showTab('taxi')">🚕 Taxi</div>
+    <div class="tab" id="tab-routes" onclick="showTab('routes')">Rutas</div>
+    <div class="tab" id="tab-stops" onclick="showTab('stops')">Paradas</div>
   </div>
+
+  <!-- Contenedor de paneles -->
+  <div class="panel">
+    <div id="panel-taxi"></div>
+    <div id="panel-routes" style="display:none;"></div>
+    <div id="panel-stops" style="display:none;"></div>
+  </div>
+
+  <!-- Mapa de Colectivos con altura idéntica al de taxi -->
+  <div id="map"></div>
 </div>
-<div class="tabs">
-  <div class="tab active" id="tab-routes" onclick="showTab('routes')">Rutas</div>
-  <div class="tab" id="tab-stops" onclick="showTab('stops')">Paradas</div>
-  <div class="tab" id="tab-taxi" onclick="showTab('taxi')">🚕 Taxi</div>
-</div>
-<div id="panel-routes"></div>
-<div id="panel-stops" style="display:none"></div>
-<div id="panel-taxi" style="display:none"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -152,7 +115,7 @@ const API = 'https://api.velezyricaurte.com'
 const POLL_MS = 10_000, NOTIFY_MS = 15_000, ALERT_MIN = 2
 
 let routes = [], markers = {}, selected = null, waypoints = []
-let watching = {}, notified = new Set(), currentTab = 'routes'
+let watching = {}, notified = new Set(), currentTab = 'taxi'
 let msgList = [], msgPollInterval = null
 let taxiMap = null
 let taxiMarkers = {}
@@ -176,10 +139,19 @@ function makeIcon(color, label = '') {
 
 function showTab(tab) {
   currentTab = tab
+  document.getElementById('tab-taxi').classList.toggle('active',   tab === 'taxi')
   document.getElementById('tab-routes').classList.toggle('active', tab === 'routes')
-  document.getElementById('tab-stops').classList.toggle('active', tab === 'stops')
+  document.getElementById('tab-stops').classList.toggle('active',  tab === 'stops')
+  
+  document.getElementById('panel-taxi').style.display   = tab === 'taxi'   ? '' : 'none'
   document.getElementById('panel-routes').style.display = tab === 'routes' ? '' : 'none'
   document.getElementById('panel-stops').style.display  = tab === 'stops'  ? '' : 'none'
+
+  if (tab === 'taxi') {
+    renderTaxi()
+  } else {
+    setTimeout(() => map.invalidateSize(), 100)
+  }
 }
 
 function seatsClass(s, c) { const p = s/c; return p > 0.3 ? 'seats-ok' : p > 0 ? 'seats-few' : 'seats-full' }
@@ -449,24 +421,12 @@ async function fetchRoutes() {
 fetchRoutes()
 setInterval(fetchRoutes, POLL_MS)
 setInterval(checkAlerts, NOTIFY_MS)
+
 // ── Estado taxi ───────────────────────────────────────────────────────────────
 let taxiStep    = 'form'    // form | searching | trip
 let activeTripId = null
 let taxiPollInterval = null
 let fareEstimate = null
-
-// ── Tabs — actualizar showTab ─────────────────────────────────────────────────
-// Reemplaza la función showTab existente por esta:
-function showTab(tab) {
-  currentTab = tab
-  document.getElementById('tab-routes').classList.toggle('active', tab === 'routes')
-  document.getElementById('tab-stops').classList.toggle('active',  tab === 'stops')
-  document.getElementById('tab-taxi').classList.toggle('active',   tab === 'taxi')
-  document.getElementById('panel-routes').style.display = tab === 'routes' ? '' : 'none'
-  document.getElementById('panel-stops').style.display  = tab === 'stops'  ? '' : 'none'
-  document.getElementById('panel-taxi').style.display   = tab === 'taxi'   ? '' : 'none'
-  if (tab === 'taxi') renderTaxi()
-}
 
 // ── Render taxi ───────────────────────────────────────────────────────────────
 function renderTaxi() {
@@ -474,7 +434,7 @@ function renderTaxi() {
 
   if (taxiStep === 'form') {
     el.innerHTML = `
-      <div id="taxi-map" style="height:200px;width:100%;border-bottom:1px solid #334155"></div>
+      <div id="taxi-map" style="height:210px;width:100%;border-bottom:1px solid #334155"></div>
       <div class="taxi-panel">
         <p style="font-size:13px;font-weight:600;color:#e2e8f0;margin-bottom:12px">
           🚕 Solicitar taxi
@@ -516,7 +476,6 @@ function renderTaxi() {
         </button>
       </div>`
 
-    // Inicializar mapa de taxi
     setTimeout(() => initTaxiMap(), 100)
   }
 
@@ -544,7 +503,7 @@ function renderTaxi() {
 
   if (taxiStep === 'trip') {
     el.innerHTML = `
-      <div id="taxi-map" style="height:220px;width:100%;border-bottom:1px solid #334155"></div>
+      <div id="taxi-map" style="height:210px;width:100%;border-bottom:1px solid #334155"></div>
       <div class="taxi-panel" id="trip-panel">
         <p style="font-size:11px;color:#64748b;margin-bottom:8px">
           Cargando estado del viaje...
@@ -562,7 +521,6 @@ function initTaxiMap() {
   const container = document.getElementById('taxi-map')
   if (!container) return
 
-  // Si ya existe el mapa lo destruye
   if (taxiMap) { taxiMap.remove(); taxiMap = null; taxiMarkers = {} }
 
   taxiMap = L.map('taxi-map', { zoomControl: false })
@@ -571,14 +529,12 @@ function initTaxiMap() {
     attribution: '© OpenStreetMap', maxZoom: 18,
   }).addTo(taxiMap)
 
-  // Centrar en ubicación del pasajero
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(pos => {
       const lat = pos.coords.latitude
       const lng = pos.coords.longitude
       taxiMap.setView([lat, lng], 14)
 
-      // Marcador del pasajero
       L.marker([lat, lng], {
         icon: L.divIcon({
           className: '',
@@ -604,7 +560,6 @@ async function loadNearbyDrivers(lat, lng) {
     if (!res.ok) return
     const drivers = await res.json()
 
-    // Limpiar marcadores anteriores
     Object.values(taxiMarkers).forEach(m => m.remove())
     taxiMarkers = {}
 
@@ -642,19 +597,15 @@ async function loadNearbyDrivers(lat, lng) {
 
       taxiMarkers[d.driver_id] = marker
     })
-
-    showToast(`${drivers.length} taxi(s) disponible(s) cerca`)
   } catch (e) {
     console.warn('Error cargando taxis:', e)
   }
 }
 
-// ── Estimar tarifa ────────────────────────────────────────────────────────────
 async function estimateFare() {
   const btn = document.getElementById('taxi-estimate-btn')
   btn.disabled = true; btn.textContent = 'Calculando...'
 
-  // Obtener ubicación GPS del pasajero
   let lat = 5.877, lng = -73.669
   try {
     await new Promise(resolve => {
@@ -670,17 +621,10 @@ async function estimateFare() {
     if (!res.ok) throw new Error()
     const drivers = await res.json()
 
-    const dist = parseFloat(document.getElementById('taxi-dest').value) || 2.5
     fareEstimate = {
       fare_total: 8750,
       km:         2.5,
       minutes:    8,
-    }
-
-    if (drivers.length === 0) {
-      showToast('No hay conductores disponibles en este momento')
-    } else {
-      showToast(`${drivers.length} conductor(es) disponible(s) cerca`)
     }
   } catch {
     showToast('No se pudo calcular el estimado')
@@ -690,10 +634,7 @@ async function estimateFare() {
   }
 }
 
-// ── Solicitar taxi ────────────────────────────────────────────────────────────
-// ── Solicitar taxi ────────────────────────────────────────────────────────────
 async function requestTaxi() {
-  // Evitar múltiples solicitudes activas
   if (activeTripId) {
     showToast('Ya tienes un viaje activo')
     return
@@ -741,11 +682,10 @@ async function requestTaxi() {
     if (!res.ok) throw new Error(data.detail)
 
     activeTripId = data.trip_id
-    taxiStep     = 'searching'
     fareEstimate = data.estimated_fare
-    renderTaxi()  // Esto deshabilita el formulario automáticamente cambiando el estado
+    taxiStep     = 'searching'
+    renderTaxi()
 
-    // Polling para detectar cuando el conductor acepta
     taxiPollInterval = setInterval(async () => {
       try {
         const r = await fetch(`${API}/taxi/trips/${activeTripId}/status`)
@@ -764,7 +704,6 @@ async function requestTaxi() {
   }
 }
 
-// ── Cancelar taxi ─────────────────────────────────────────────────────────────
 async function cancelTaxi() {
   if (!activeTripId) { resetTaxi(); return }
   try {
@@ -785,11 +724,9 @@ function resetTaxi() {
   fareEstimate = null
   driverMarker = null
   clearInterval(taxiPollInterval)
-  if (taxiMap) { taxiMap.remove(); taxiMap = null; taxiMarkers = {} }
   renderTaxi()
 }
 
-// ── Polling estado del viaje activo ───────────────────────────────────────────
 async function pollTripStatus() {
   if (!activeTripId) return
   try {
@@ -797,7 +734,6 @@ async function pollTripStatus() {
     const trip = await res.json()
     renderTripPanel(trip)
 
-    // Mostrar conductor en el mapa durante el viaje
     if (taxiMap && trip.driver &&
         trip.driver.lat && trip.driver.lng) {
       const pos = [trip.driver.lat, trip.driver.lng]
@@ -902,11 +838,16 @@ function renderTripPanel(trip) {
       </button>
     ` : ''}`
 
-  // Continuar polling si el viaje sigue activo
   if (trip.status !== 'completado' && trip.status !== 'cancelado') {
     setTimeout(pollTripStatus, 5000)
   }
 }
+
+// Inicializar por defecto en la pestaña Taxi al cargar la página
+renderTaxi()
+fetchRoutes()
+setInterval(fetchRoutes, POLL_MS)
+setInterval(checkAlerts, NOTIFY_MS)
 </script>
 </body>
 </html>

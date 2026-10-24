@@ -91,22 +91,25 @@
     <span id="status-badge" class="badge badge-none">Cargando...</span>
   </header>
 
-  <!-- Pestañas de navegación unificadas arriba -->
+  <!-- Pestañas de navegación -->
   <div class="tabs">
     <div class="tab active" id="tab-taxi" onclick="showTab('taxi')">🚕 Taxi</div>
     <div class="tab" id="tab-routes" onclick="showTab('routes')">Rutas</div>
     <div class="tab" id="tab-stops" onclick="showTab('stops')">Paradas</div>
   </div>
 
-  <!-- Contenedor de paneles -->
-  <div class="panel">
+  <!-- Contenedor principal que alterna las vistas -->
+  <div class="panel" style="display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
+    <!-- Vista de Taxi (Contiene su propio mapa interno #taxi-map) -->
     <div id="panel-taxi"></div>
-    <div id="panel-routes" style="display:none;"></div>
-    <div id="panel-stops" style="display:none;"></div>
-  </div>
 
-  <!-- Mapa de Colectivos con altura idéntica al de taxi -->
-  <div id="map"></div>
+    <!-- Vista de Rutas y Paradas (Contiene el mapa general de colectivos #map) -->
+    <div id="panel-routes-container" style="display: none; flex-direction: column; flex: 1;">
+      <div id="map"></div>
+      <div id="panel-routes"></div>
+      <div id="panel-stops" style="display:none;"></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -139,18 +142,37 @@ function makeIcon(color, label = '') {
 
 function showTab(tab) {
   currentTab = tab
+  
+  // Actualizar clases activas de las pestañas
   document.getElementById('tab-taxi').classList.toggle('active',   tab === 'taxi')
   document.getElementById('tab-routes').classList.toggle('active', tab === 'routes')
   document.getElementById('tab-stops').classList.toggle('active',  tab === 'stops')
   
-  document.getElementById('panel-taxi').style.display   = tab === 'taxi'   ? '' : 'none'
-  document.getElementById('panel-routes').style.display = tab === 'routes' ? '' : 'none'
-  document.getElementById('panel-stops').style.display  = tab === 'stops'  ? '' : 'none'
+  const panelTaxi = document.getElementById('panel-taxi')
+  const panelRoutesContainer = document.getElementById('panel-routes-container')
+  const panelRoutes = document.getElementById('panel-routes')
+  const panelStops = document.getElementById('panel-stops')
 
   if (tab === 'taxi') {
+    panelTaxi.style.display = 'block'
+    panelRoutesContainer.style.display = 'none'
     renderTaxi()
   } else {
-    setTimeout(() => map.invalidateSize(), 100)
+    panelTaxi.style.display = 'none'
+    panelRoutesContainer.style.display = 'flex'
+
+    if (tab === 'routes') {
+      panelRoutes.style.display = 'block'
+      panelStops.style.display = 'none'
+    } else if (tab === 'stops') {
+      panelRoutes.style.display = 'none'
+      panelStops.style.display = 'block'
+    }
+
+    // Recargar tamaño del mapa de Leaflet para evitar que se renderice gris
+    setTimeout(() => {
+      map.invalidateSize()
+    }, 100)
   }
 }
 

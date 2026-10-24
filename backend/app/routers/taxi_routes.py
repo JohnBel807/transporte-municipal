@@ -286,8 +286,8 @@ async def request_trip(
                 "origin_address": body.origin_address,
                 "dest_address":   body.dest_address,
                 "estimated_fare": est_fare["fare_total"],
-                "lat":            lat,
-                "lng":            lng,
+                "lat":            body.origin_lat,  # 👈 CORREGIDO
+                "lng":            body.origin_lng,  # 👈 CORREGIDO
             }),
         )
 

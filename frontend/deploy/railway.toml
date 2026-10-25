@@ -7,7 +7,7 @@ builder = "DOCKERFILE"
 
 # ── Servicio Backend ──────────────────────────────────────────────────────────
 [services.backend]
-dockerfilePath  = "deploy/backend/Dockerfile"
+dockerfilePath  = "frontend/deploy/frontend/Dockerfile"
 buildContext    = "."
 
 # Release command: se ejecuta UNA VEZ antes de desplegar las nuevas instancias
@@ -42,7 +42,7 @@ REFRESH_TOKEN_EXPIRE_DAYS = "30"
 
 # ── Servicio Frontend ─────────────────────────────────────────────────────────
 [services.frontend]
-dockerfilePath  = "deploy/frontend/Dockerfile"
+dockerfilePath  = "frontend/deploy/frontend/Dockerfile"
 buildContext    = "."
 
 [services.frontend.build.args]

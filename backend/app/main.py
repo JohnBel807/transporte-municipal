@@ -33,6 +33,7 @@ app.add_middleware(
         "https://practical-creation-production-8797.up.railway.app",
         "https://admin.velezyricaurte.com",
         "https://bus.velezyricaurte.com",
+        "https://app.velezyricaurte.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],

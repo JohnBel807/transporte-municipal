@@ -5,17 +5,16 @@
 [build]
 builder = "DOCKERFILE"
 
-# ── Servicio Backend ──────────────────────────────────────────────────────────
+# ── Servicio Backend (FastAPI / Python) ───────────────────────────────────────
 [services.backend]
-dockerfilePath  = "frontend/deploy/frontend/Dockerfile"
+dockerfilePath  = "backend/Dockerfile"  # <--- Asegúrate de que esta sea la ruta real de tu Dockerfile backend
 buildContext    = "."
 
 # Release command: se ejecuta UNA VEZ antes de desplegar las nuevas instancias
-# Más seguro que el entrypoint para producción con múltiples replicas
 releaseCommand  = "alembic upgrade head"
 
 [services.backend.deploy]
-numReplicas     = 1           # aumentar a 2+ en producción
+numReplicas     = 1
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
@@ -26,9 +25,8 @@ timeoutSeconds  = 10
 successThreshold = 1
 failureThreshold = 3
 
-# Variables no-secretas (las secretas van en el dashboard de Railway)
 [services.backend.variables]
-APP_ENV               = "production"
+APP_ENV                 = "production"
 ZONE_CONFIG_DEFAULT   = "velez_ricaurte"
 DB_POOL_MIN_SIZE      = "2"
 DB_POOL_MAX_SIZE      = "10"
@@ -40,9 +38,9 @@ ACCESS_TOKEN_EXPIRE_MIN  = "15"
 REFRESH_TOKEN_EXPIRE_DAYS = "30"
 
 
-# ── Servicio Frontend ─────────────────────────────────────────────────────────
+# ── Servicio Frontend (React / Vite / Nginx) ──────────────────────────────────
 [services.frontend]
-dockerfilePath  = "frontend/deploy/frontend/Dockerfile"
+dockerfilePath  = "frontend/deploy/frontend/Dockerfile"  # <--- Este SÍ usa el del frontend
 buildContext    = "."
 
 [services.frontend.build.args]
@@ -60,10 +58,4 @@ intervalSeconds = 30
 
 # ── Base de datos PostgreSQL (plugin de Railway) ──────────────────────────────
 [services.database]
-# Railway inyecta $DATABASE_URL automáticamente al conectar el plugin
 plugin = "postgresql"
-
-# Habilitar PostGIS (Railway soporta extensiones en su Postgres managed)
-# Ejecutar manualmente una vez:
-#   CREATE EXTENSION IF NOT EXISTS postgis;
-#   CREATE EXTENSION IF NOT EXISTS postgis_topology;

@@ -328,9 +328,12 @@ export function PassengerPage() {
       {/* Header */}
       <header className="bg-slate-900 border-b border-slate-800 px-4 py-3
                          flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-sm font-semibold">🚌 Transporte V&R</h1>
-          <p className="text-xs text-slate-500">Vélez &amp; Ricaurte</p>
+        <div className="flex items-center gap-2.5">
+          <img src="/logo-veri.png" alt="VERI Logo" className="w-8 h-8 object-contain rounded-lg" />
+          <div>
+          <h1 className="text-sm font-semibold">VERI</h1>
+            <p className="text-xs text-slate-500">Vélez &amp; Ricaurte</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-semibold px-2 py-1 rounded-full border

@@ -698,14 +698,14 @@ export function PassengerPage() {
                     ${tripStatus.status === 'completado'
                       ? 'bg-teal-500/10 border-teal-500/30'
                       : 'bg-slate-800 border-slate-700'}`}>
-                    <p className="text-xs text-slate-400 mb-1">
-                      {{
+                      <p className="text-xs text-slate-400 mb-1">
+                      {({
                         aceptado:  'Conductor en camino 🚗',
                         esperando: 'Conductor llegó ⏳',
                         en_curso:  'Viaje en curso 🛣️',
                         completado:'Viaje completado ✅',
                         cancelado: 'Viaje cancelado ❌',
-                      }[tripStatus.status] ?? tripStatus.status}
+                      } as Record<string, string>)[tripStatus.status] ?? tripStatus.status}
                     </p>
                     {tripStatus.driver && (
                       <p className="text-sm font-semibold text-white">

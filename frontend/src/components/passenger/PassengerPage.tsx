@@ -282,18 +282,25 @@ export function PassengerPage() {
       setFareEstimate(data.estimated_fare)
       setTaxiStep('searching')
 
-      // Polling para detectar aceptación
+      // Polling continuo para detectar cualquier cambio de estado del viaje
+      if (tripPollRef.current) clearInterval(tripPollRef.current)
       tripPollRef.current = setInterval(async () => {
         try {
           const r = await fetch(`${API}/taxi/trips/${data.trip_id}/status`)
           const d = await r.json()
-          if (d.status !== 'solicitado') {
-            clearInterval(tripPollRef.current!)
-            setTaxiStep('trip')
+          
+          if (d && d.status) {
             setTripStatus(d)
+            if (d.status !== 'solicitado') {
+              setTaxiStep('trip')
+            }
+            // Si el viaje ya finalizó o se canceló, detenemos el polling
+            if (d.status === 'completado' || d.status === 'cancelado') {
+              if (tripPollRef.current) clearInterval(tripPollRef.current)
+            }
           }
         } catch {}
-      }, 5_000)
+      }, 4_000)
     } catch (err: any) {
       alert(err.message || 'Error al solicitar taxi')
     }

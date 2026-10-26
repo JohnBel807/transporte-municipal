@@ -286,7 +286,7 @@ export function PassengerPage() {
       tripPollRef.current = setInterval(async () => {
         try {
           const r = await fetch(`${API}/taxi/trips/${data.trip_id}/status`)
-          const d = await res.json()
+          const d = await r.json()
           if (d.status !== 'solicitado') {
             clearInterval(tripPollRef.current!)
             setTaxiStep('trip')

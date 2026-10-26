@@ -255,31 +255,31 @@ export function PassengerPage() {
     } catch {}
   }
 
-async function requestTaxi() {
-    if (activeTripId) { alert('Ya tienes un viaje activo'); return }
-    if (!taxiOrigin)  { alert('Escribe tu punto de recogida'); return }
-    if (!taxiDest)    { alert('Escribe tu destino'); return }
+  async function requestTaxi() {
+      if (activeTripId) { alert('Ya tienes un viaje activo'); return }
+      if (!taxiOrigin)  { alert('Escribe tu punto de recogida'); return }
+      if (!taxiDest)    { alert('Escribe tu destino'); return }
 
-    const [lat, lng] = passengerPos ?? [5.9333, -73.6167]
+      const [lat, lng] = passengerPos ?? [5.9333, -73.6167]
 
-    try {
-      // 🟢 Ajustado a ${API}/request
-      const res = await fetch(`${API}/request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          origin_lat: lat, 
-          origin_lng: lng,
-          origin_address: taxiOrigin,
-          dest_lat: lat, 
-          dest_lng: lng,
-          dest_address: taxiDest,
-          passenger_name:  taxiName  || 'Pasajero',
-          passenger_phone: taxiPhone || '',
-          has_luggage:     taxiLuggage,
-          has_ac:          taxiAC,
-        }),
-      })
+      try {
+        // 🟢 Añadido el prefijo /taxi/request según la configuración del backend
+        const res = await fetch(`${API}/taxi/request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origin_lat: lat, 
+            origin_lng: lng,
+            origin_address: taxiOrigin,
+            dest_lat: lat, 
+            dest_lng: lng,
+            dest_address: taxiDest,
+            passenger_name:  taxiName  || 'Pasajero',
+            passenger_phone: taxiPhone || '',
+            has_luggage:     taxiLuggage,
+            has_ac:          taxiAC,
+          }),
+        })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail)
@@ -291,8 +291,8 @@ async function requestTaxi() {
       if (tripPollRef.current) clearInterval(tripPollRef.current)
       tripPollRef.current = setInterval(async () => {
         try {
-          // 🟢 Ajustado a ${API}/trips/.../status
-          const r = await fetch(`${API}/trips/${data.trip_id}/status`)
+          // 🟢 Añadido el prefijo /taxi/trips/.../status según la configuración del backend
+          const r = await fetch(`${API}/taxi/trips/${data.trip_id}/status`)
           const d = await r.json()
           
           if (d && d.status) {

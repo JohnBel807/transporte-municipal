@@ -6,6 +6,12 @@ interface TripStatus {
   trip_id:        string
   status:         string
   passenger_name: string
+  // Coordenadas de origen del pasajero para la navegación GPS
+  origin_lat?:    number | null
+  origin_lng?:    number | null
+  passenger_lat?: number | null
+  passenger_lng?: number | null
+  origin_name?:   string | null
   fare_current:   { fare_total: number; km: number; minutes: number; fare_breakdown: any } | null
   fare_total:     number | null
 }
@@ -69,20 +75,45 @@ export function TaxiTripPanel({
     en_curso:  'Viaje en curso',
   }
 
+  // Extraer las coordenadas exactas enviadas por la API
+  const lat = trip.origin_lat ?? trip.passenger_lat
+  const lng = trip.origin_lng ?? trip.passenger_lng
+
   return (
     <div className="bg-slate-800 rounded-xl p-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold text-white">
-            {trip.passenger_name}
+            👤 {trip.passenger_name}
           </p>
           <p className="text-xs text-teal-400">
             {STATUS_LABEL[trip.status] ?? trip.status}
           </p>
+          {trip.origin_name && (
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              📍 {trip.origin_name}
+            </p>
+          )}
         </div>
         <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"/>
       </div>
+
+      {/* Botón Navegar / Ver ubicación del pasajero */}
+      {lat && lng && (trip.status === 'aceptado' || trip.status === 'esperando') && (
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full py-2 px-3 bg-teal-500/10 border border-teal-500/30 hover:bg-teal-500/20 text-teal-400 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition"
+        >
+          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Abrir ubicación del pasajero en GPS 🗺️
+        </a>
+      )}
 
       {/* Taxímetro */}
       {trip.status === 'en_curso' && trip.fare_current && (

@@ -91,8 +91,8 @@ export function DriverHomePage() {
         if (Notification.permission === 'granted') {
           const notif = new Notification('🚕 Nueva solicitud de taxi', {
             body: `${req.passenger_name}\n${req.origin_address} → ${req.dest_address}\nTarifa estimada: $${req.estimated_fare?.fare_total?.toLocaleString('es-CO')}`,
-            icon: '/ico-192.png',
-            badge: '/ico-192.png',
+            icon: '/logo-veri.png',
+            badge: '/logo-veri.png',
             requireInteraction: true,
             tag: req.trip_id,
           } as NotificationOptions)

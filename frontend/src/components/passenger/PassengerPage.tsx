@@ -255,30 +255,39 @@ export function PassengerPage() {
     } catch {}
   }
 
-  async function requestTaxi() {
+async function requestTaxi() {
     if (activeTripId) { alert('Ya tienes un viaje activo'); return }
     if (!taxiOrigin)  { alert('Escribe tu punto de recogida'); return }
     if (!taxiDest)    { alert('Escribe tu destino'); return }
 
+    // Tomamos la posición actual del pasajero obtenida por su GPS o el valor por defecto
     const [lat, lng] = passengerPos ?? [5.9333, -73.6167]
+
     try {
-      const res = await fetch(`${API}/taxi/request`, {
+      // ⚠️ Ajusta esta ruta si tu backend usa prefijo /api/v1 o /api/v1/taxi/requests
+      const res = await fetch(`${API}/api/v1/taxi/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          origin_lat: lat, origin_lng: lng,
+          origin_lat: lat, 
+          origin_lng: lng,
           origin_address: taxiOrigin,
-          dest_lat: lat, dest_lng: lng,
+          dest_lat: lat, 
+          dest_lng: lng,
           dest_address: taxiDest,
           passenger_name:  taxiName  || 'Pasajero',
-          passenger_phone: taxiPhone || '',
-          has_luggage: taxiLuggage,
-          has_ac:      taxiAC,
+          phone:           taxiPhone || '', // Asegúrate de que el backend espere 'phone' o 'passenger_phone'
+          has_luggage:     taxiLuggage,
+          has_ac:          taxiAC,
         }),
       })
+
       const data = await res.json()
-      if (!res.ok) throw new Error(data.detail)
-      setActiveTripId(data.trip_id)
+      if (!res.ok) throw new Error(data.detail || 'Error en la solicitud')
+
+      // Guardamos el ID del viaje (verificando si el backend lo devuelve como id, trip_id o tripId)
+      const newTripId = data.id || data.trip_id || data.tripId;
+      setActiveTripId(newTripId)
       setFareEstimate(data.estimated_fare)
       setTaxiStep('searching')
 
@@ -286,7 +295,8 @@ export function PassengerPage() {
       if (tripPollRef.current) clearInterval(tripPollRef.current)
       tripPollRef.current = setInterval(async () => {
         try {
-          const r = await fetch(`${API}/taxi/trips/${data.trip_id}/status`)
+          const r = await fetch(`${API}/api/v1/taxi/trips/${newTripId}/status`)
+          if (!r.ok) return;
           const d = await r.json()
           
           if (d && d.status) {
@@ -299,8 +309,11 @@ export function PassengerPage() {
               if (tripPollRef.current) clearInterval(tripPollRef.current)
             }
           }
-        } catch {}
+        } catch (e) {
+          console.warn("Error en polling de pasajero:", e);
+        }
       }, 4_000)
+
     } catch (err: any) {
       alert(err.message || 'Error al solicitar taxi')
     }

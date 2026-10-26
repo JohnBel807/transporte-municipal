@@ -670,9 +670,12 @@ async def get_trip_status(
             )
 
     return {
-        "trip_id":       trip_id,
-        "status":        trip["status"],
+        "trip_id":        trip_id,
+        "status":         trip["status"],
         "passenger_name": trip["passenger_name"],
+        # 🟢 INTEGRADAS: Coordenadas de origen del pasajero para la navegación GPS del conductor
+        "origin_lat":     float(trip["origin_lat"]) if trip["origin_lat"] is not None else None,
+        "origin_lng":     float(trip["origin_lng"]) if trip["origin_lng"] is not None else None,
         "driver": {
             "name":         trip["driver_name"],
             "plate":        trip["plate"],

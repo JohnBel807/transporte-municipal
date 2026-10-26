@@ -599,14 +599,16 @@ export function DriverHomePage() {
               </div>
               <button
                 disabled={taxiModeMutation.isPending}
-                onClick={() => taxiModeMutation.mutate(!taxiMode)}
-                className={`relative w-12 h-6 rounded-full transition-colors duration-200
-                  ${taxiMode ? 'bg-teal-500' : 'bg-slate-700'}
-                  disabled:opacity-50`}
-              >
-                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow
-                  transition-transform duration-200
-                  ${taxiMode ? 'translate-x-6' : 'translate-x-0.5'}`}/>
+                  onClick={() => taxiModeMutation.mutate(!taxiMode)}
+                  className={`relative inline-flex w-12 h-6 rounded-full transition-colors duration-200 shrink-0
+                    ${taxiMode ? 'bg-teal-500' : 'bg-slate-700'}
+                    disabled:opacity-50`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow
+                      transition-all duration-200
+                      ${taxiMode ? 'right-0.5' : 'left-0.5'}`}
+                  />
               </button>
             </div>
 

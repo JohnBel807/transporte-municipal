@@ -260,12 +260,11 @@ async function requestTaxi() {
     if (!taxiOrigin)  { alert('Escribe tu punto de recogida'); return }
     if (!taxiDest)    { alert('Escribe tu destino'); return }
 
-    // Tomamos la posición actual del pasajero obtenida por su GPS o el valor por defecto
     const [lat, lng] = passengerPos ?? [5.9333, -73.6167]
 
     try {
-      // ⚠️ Ajusta esta ruta si tu backend usa prefijo /api/v1 o /api/v1/taxi/requests
-      const res = await fetch(`${API}/api/v1/taxi/requests`, {
+      // 🟢 Ajustado a ${API}/request
+      const res = await fetch(`${API}/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -276,27 +275,24 @@ async function requestTaxi() {
           dest_lng: lng,
           dest_address: taxiDest,
           passenger_name:  taxiName  || 'Pasajero',
-          phone:           taxiPhone || '', // Asegúrate de que el backend espere 'phone' o 'passenger_phone'
+          passenger_phone: taxiPhone || '',
           has_luggage:     taxiLuggage,
           has_ac:          taxiAC,
         }),
       })
 
       const data = await res.json()
-      if (!res.ok) throw new Error(data.detail || 'Error en la solicitud')
-
-      // Guardamos el ID del viaje (verificando si el backend lo devuelve como id, trip_id o tripId)
-      const newTripId = data.id || data.trip_id || data.tripId;
-      setActiveTripId(newTripId)
+      if (!res.ok) throw new Error(data.detail)
+      setActiveTripId(data.trip_id)
       setFareEstimate(data.estimated_fare)
       setTaxiStep('searching')
 
-      // Polling continuo para detectar cualquier cambio de estado del viaje
+      // Polling continuo para detectar el estado del viaje
       if (tripPollRef.current) clearInterval(tripPollRef.current)
       tripPollRef.current = setInterval(async () => {
         try {
-          const r = await fetch(`${API}/api/v1/taxi/trips/${newTripId}/status`)
-          if (!r.ok) return;
+          // 🟢 Ajustado a ${API}/trips/.../status
+          const r = await fetch(`${API}/trips/${data.trip_id}/status`)
           const d = await r.json()
           
           if (d && d.status) {
@@ -304,16 +300,12 @@ async function requestTaxi() {
             if (d.status !== 'solicitado') {
               setTaxiStep('trip')
             }
-            // Si el viaje ya finalizó o se canceló, detenemos el polling
             if (d.status === 'completado' || d.status === 'cancelado') {
               if (tripPollRef.current) clearInterval(tripPollRef.current)
             }
           }
-        } catch (e) {
-          console.warn("Error en polling de pasajero:", e);
-        }
+        } catch {}
       }, 4_000)
-
     } catch (err: any) {
       alert(err.message || 'Error al solicitar taxi')
     }

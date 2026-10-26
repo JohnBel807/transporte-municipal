@@ -696,7 +696,7 @@ export function PassengerPage() {
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg
                                px-3 py-2.5 text-sm text-white placeholder-slate-500
                                focus:outline-none focus:ring-1 focus:ring-teal-500"
-                    placeholder="Tu nombre (opcional)"
+                    placeholder="Tu nombre y referencia del lugar de ubicación (opcional)"
                     value={taxiName}
                     onChange={e => setTaxiName(e.target.value)}
                   />

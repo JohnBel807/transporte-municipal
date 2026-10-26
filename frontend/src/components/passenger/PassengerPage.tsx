@@ -50,8 +50,8 @@ interface NearbyDriver {
 }
 
 interface TaxiTrip {
-  trip_id:      string
-  status:       string
+  trip_id:        string
+  status:         string
   estimated_fare?: { fare_total: number; km: number; minutes: number }
 }
 
@@ -92,8 +92,8 @@ function makePassengerIcon() {
   return L.divIcon({
     className: '',
     html: `<div style="width:14px;height:14px;background:#6366f1;
-                       border:2px solid #0f172a;border-radius:50%;
-                       box-shadow:0 0 0 4px #6366f133"></div>`,
+                         border:2px solid #0f172a;border-radius:50%;
+                         box-shadow:0 0 0 4px #6366f133"></div>`,
     iconSize:  [14, 14],
     iconAnchor:[7, 7],
   })
@@ -128,6 +128,7 @@ export function PassengerPage() {
   const [fareEstimate, setFareEstimate] = useState<any>(null)
   const [nearbyDrivers, setNearbyDrivers] = useState<NearbyDriver[]>([])
   const [passengerPos, setPassengerPos] = useState<[number,number] | null>(null)
+  const [locating, setLocating]         = useState(false)
 
   const msgPollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   const tripPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -142,6 +143,46 @@ export function PassengerPage() {
       )
     }
   }, [])
+
+  // ── Función para obtener la ubicación actual ─────────────────────────────────
+  async function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      alert('Tu navegador no soporta geolocalización')
+      return
+    }
+    setLocating(true)
+    setTaxiOrigin('Obteniendo ubicación...')
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        setPassengerPos([lat, lng])
+
+        // Intentar obtener nombre de la calle con reverse geocoding
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=es`
+          )
+          const data = await res.json()
+          const addr = data.address
+          const label = [
+            addr.road,
+            addr.suburb ?? addr.neighbourhood ?? addr.village ?? addr.town ?? addr.city,
+          ].filter(Boolean).join(', ')
+          setTaxiOrigin(label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+        } catch {
+          setTaxiOrigin(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+        }
+        setLocating(false)
+      },
+      () => {
+        setTaxiOrigin('')
+        alert('No se pudo obtener tu ubicación. Verifica los permisos.')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
 
   // ── Fetch rutas activas ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -429,7 +470,7 @@ export function PassengerPage() {
 
       {/* Panel inferior */}
       <div className="flex-1 bg-slate-900 border-t border-slate-800
-                      flex flex-col overflow-hidden">
+                    flex flex-col overflow-hidden">
 
         {/* Tabs */}
         <div className="flex border-b border-slate-800 shrink-0">
@@ -472,12 +513,12 @@ export function PassengerPage() {
                       {r.route_name}
                     </span>
                     <span className={`text-xs font-semibold px-2 py-0.5
-                                     rounded-lg border
-                      ${r.seats_available > r.capacity * 0.3
-                        ? 'text-teal-400 bg-teal-400/10 border-teal-400/30'
-                        : r.seats_available > 0
-                          ? 'text-amber-400 bg-amber-400/10 border-amber-400/30'
-                          : 'text-red-400 bg-red-400/10 border-red-400/30'}`}>
+                                       rounded-lg border
+                        ${r.seats_available > 0
+                          ? 'text-teal-400 bg-teal-400/10 border-teal-400/30'
+                          : r.seats_available > 0
+                            ? 'text-amber-400 bg-amber-400/10 border-amber-400/30'
+                            : 'text-red-400 bg-red-400/10 border-red-400/30'}`}>
                       {seatsLabel(r.seats_available)}
                     </span>
                   </div>
@@ -617,14 +658,25 @@ export function PassengerPage() {
                       No hay taxis disponibles en este momento
                     </p>
                   )}
-                  <input
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg
-                               px-3 py-2.5 text-sm text-white placeholder-slate-500
-                               focus:outline-none focus:ring-1 focus:ring-teal-500"
-                    placeholder="📍 ¿Dónde estás?"
-                    value={taxiOrigin}
-                    onChange={e => setTaxiOrigin(e.target.value)}
-                  />
+                  <div className="relative">
+                    <input
+                      className="w-full bg-slate-800 border border-slate-700 rounded-lg
+                                px-3 py-2.5 pr-24 text-sm text-white placeholder-slate-500
+                                focus:outline-none focus:ring-1 focus:ring-teal-500"
+                      placeholder="📍 ¿Dónde estás?"
+                      value={taxiOrigin}
+                      onChange={e => setTaxiOrigin(e.target.value)}
+                    />
+                    <button
+                      onClick={useCurrentLocation}
+                      disabled={locating}
+                      className="absolute right-1 top-1 bottom-1 px-2 text-xs
+                                bg-teal-500/20 text-teal-400 border border-teal-500/30
+                                rounded-lg hover:bg-teal-500/30 disabled:opacity-50
+                                transition whitespace-nowrap">
+                      {locating ? '...' : '📍 Mi ubicación'}
+                    </button>
+                  </div>
                   <input
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg
                                px-3 py-2.5 text-sm text-white placeholder-slate-500

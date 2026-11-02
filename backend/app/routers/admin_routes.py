@@ -162,6 +162,7 @@ class DriverCreateRequest(BaseModel):
     license_number:   str = Field(min_length=3, max_length=30)
     license_category: str = Field(min_length=1, max_length=10)
     zone_slug:        str = Field(default="velez")
+    taxi_municipality: str | None = Field(default=None, max_length=80)
     plate:            str = Field(min_length=5, max_length=10)
     brand:            str = Field(min_length=2, max_length=50)
     model:            str = Field(min_length=1, max_length=50)
@@ -224,10 +225,11 @@ async def create_driver(
             driver_id = await conn.fetchval(
                 """INSERT INTO drivers
                    (user_id, driver_type, license_number, license_category,
-                    status, is_verified, zone_id)
-                   VALUES ($1,$2,$3,$4,'disponible',TRUE,$5) RETURNING id""",
+                    status, is_verified, zone_id, taxi_municipality)
+                   VALUES ($1,$2,$3,$4,'disponible',TRUE,$5,$6) RETURNING id""",
                 user_id, body.driver_type, body.license_number,
                 body.license_category, zone_id,
+                (body.taxi_municipality or '').strip() or None,
             )
 
             vehicle_id = await conn.fetchval(

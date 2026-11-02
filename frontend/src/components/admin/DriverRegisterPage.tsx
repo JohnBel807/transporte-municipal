@@ -12,6 +12,7 @@ interface DriverForm {
   license_number:   string
   license_category: string
   zone_slug:        string
+  taxi_municipality: string
   plate:            string
   brand:            string
   model:            string
@@ -24,7 +25,7 @@ interface DriverForm {
 const EMPTY: DriverForm = {
   full_name: '', email: '', phone: '', password: '',
   driver_type: 'colectivo', license_number: '', license_category: 'C2',
-  zone_slug: 'velez', plate: '', brand: '', model: '',
+  zone_slug: 'velez', taxi_municipality: '', plate: '', brand: '', model: '',
   year: 2020, capacity: 20, color: '', vehicle_type: 'bus',
 }
 
@@ -125,6 +126,14 @@ export function DriverRegisterPage() {
                   <option value="taxi">Taxi</option>
                   <option value="particular">Particular</option>
                 </select>
+              </Field>
+              <Field label="Municipio base (taxi)">
+                <input className={inputCls} list="municipios" value={form.taxi_municipality}
+                  onChange={e => set('taxi_municipality', e.target.value)}
+                  placeholder="Ej. Barbosa (vacío = sin restricción)"/>
+                <datalist id="municipios">
+                  {['Vélez','Barbosa','Puente Nacional','Guavatá','Güepsa','Chipatá','Bolívar','San Benito','Jesús María','La Paz','Sucre','Florián','El Peñón','La Belleza','Albania','Landázuri','Cimitarra','Santa Helena del Opón','Aguada','Guadalupe','Oiba','Gámbita','Suaita','Chima','Contratación','Simacota','Palmar','Confines','Guapotá','Hato','El Guacamayo','Santa Elena'].map(m => <option key={m} value={m}/>)}
+                </datalist>
               </Field>
               <Field label="Zona operativa">
                 <select className={selectCls} value={form.zone_slug}

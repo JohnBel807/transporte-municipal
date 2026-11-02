@@ -10,6 +10,7 @@ interface Driver {
   email:            string
   phone:            string
   is_active:        boolean
+  taxi_municipality?: string | null
   driver_type:      string
   license_number:   string
   license_category: string
@@ -45,6 +46,16 @@ export function DriversListPage() {
   const navigate     = useNavigate()
   const queryClient  = useQueryClient()
   const [search, setSearch]         = useState('')
+  const muniMutation = useMutation({
+    mutationFn: ({ id, municipality }: { id: string; municipality: string }) =>
+      api.patch(`/admin/drivers/${id}/taxi-municipality`, { municipality }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-drivers'] }),
+    onError: () => alert('No se pudo guardar el municipio'),
+  })
+  const editMuni = (d: Driver) => {
+    const v = window.prompt('Municipio base del taxi (vacío = sin restricción):', d.taxi_municipality ?? '')
+    if (v !== null) muniMutation.mutate({ id: d.driver_id, municipality: v })
+  }
   const [confirmBlock, setConfirmBlock] = useState<Driver | null>(null)
   const [blockReason, setBlockReason]   = useState('')
 
@@ -205,6 +216,10 @@ export function DriversListPage() {
                     <p className="text-xs text-slate-500">
                       Lic. {driver.license_number}
                     </p>
+                    <button onClick={() => editMuni(driver)}
+                      className="text-xs text-teal-400 hover:text-teal-300 mt-1">
+                      📍 {driver.taxi_municipality || 'Sin municipio'} ✎
+                    </button>
                   </div>
                 </div>
 

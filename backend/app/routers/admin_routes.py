@@ -287,7 +287,7 @@ async def list_drivers(
                 d.status      AS driver_status,
                 d.avg_rating,
                 d.total_trips,
-                d.is_verified,
+                d.is_verified, d.taxi_municipality,
                 z.name        AS zone_name,
                 v.plate,
                 v.brand,
@@ -449,3 +449,18 @@ async def admin_change_route_status(
             )
 
     return {"route_id": route_id, "status": new_status}
+
+@router.patch("/drivers/{driver_id}/taxi-municipality")
+async def set_taxi_municipality(
+    driver_id: str,
+    body: dict,
+    pool:  Pool = Depends(get_pool),
+) -> dict:
+    """Asigna el municipio base del taxi (None = sin restricción)."""
+    muni = (body.get("municipality") or "").strip() or None
+    async with pool.acquire() as conn:
+        res = await conn.execute(
+            "UPDATE drivers SET taxi_municipality=$2 WHERE id=$1", driver_id, muni)
+    if res.endswith("0"):
+        raise HTTPException(status_code=404, detail="Conductor no encontrado")
+    return {"driver_id": driver_id, "taxi_municipality": muni}

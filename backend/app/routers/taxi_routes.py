@@ -68,6 +68,16 @@ async def find_fare_zone(conn, o_lat, o_lng, d_lat, d_lng):
     return None
 
 
+async def find_municipality(conn, lat, lng):
+    """Municipio de un punto según las zonas dibujadas (None si no hay polígono)."""
+    rows = await conn.fetch(
+        "SELECT municipality, polygon FROM fare_zones WHERE is_active ORDER BY priority DESC")
+    for z in rows:
+        if point_in_polygon(lat, lng, parse_polygon(z["polygon"])):
+            return z["municipality"]
+    return None
+
+
 def apply_fixed(fare: dict, fare_fixed) -> dict:
     """Si el viaje tiene tarifa fija por decreto, sustituye los totales."""
     if fare_fixed is None:
@@ -195,6 +205,7 @@ async def get_nearby_drivers(
 ) -> list:
     """Conductores en modo taxi disponibles cerca del pasajero."""
     async with pool.acquire() as conn:
+        muni = await find_municipality(conn, lat, lng)
         rows = await conn.fetch(
             """SELECT
                    d.id AS driver_id,
@@ -215,6 +226,8 @@ async def get_nearby_drivers(
                  AND d.taxi_available = TRUE
                  AND d.is_verified = TRUE
                  AND u.is_active = TRUE
+                 AND ($4::TEXT IS NULL OR d.taxi_municipality IS NULL
+                      OR LOWER(TRIM(d.taxi_municipality)) = LOWER(TRIM($4)))
                  AND dl.updated_at > NOW() - INTERVAL '5 minutes'
                  AND SQRT(
                      POWER((dl.lat - $1) * 111320, 2) +
@@ -222,7 +235,7 @@ async def get_nearby_drivers(
                  ) / 1000 <= $3
                ORDER BY distance_km
                LIMIT 10""",
-            lat, lng, radius_km,
+            lat, lng, radius_km, muni,
         )
 
     result = []
@@ -311,6 +324,11 @@ async def request_trip(
             await conn.execute(
                 "UPDATE particular_trips SET fare_zone_id=$2, fare_fixed=$3 WHERE id=$1",
                 trip_id, fz["id"], fare_fixed)
+        origin_muni = await find_municipality(conn, body.origin_lat, body.origin_lng)
+        if origin_muni:
+            await conn.execute(
+                "UPDATE particular_trips SET origin_municipality=$2 WHERE id=$1",
+                trip_id, origin_muni)
         
         # Notificar a conductores disponibles via pg_notify
         await conn.execute(
@@ -346,11 +364,17 @@ async def accept_trip(
 ) -> dict:
     async with pool.acquire() as conn:
         trip = await conn.fetchrow(
-            "SELECT id, status, passenger_name FROM particular_trips WHERE id=$1",
+            "SELECT id, status, passenger_name, origin_municipality FROM particular_trips WHERE id=$1",
             trip_id,
         )
         if not trip:
             raise HTTPException(status_code=404, detail="Viaje no encontrado")
+        dmuni = await conn.fetchval(
+            "SELECT taxi_municipality FROM drivers WHERE id=$1", driver.driver_id)
+        if (trip["origin_municipality"] and dmuni
+                and trip["origin_municipality"].strip().lower() != dmuni.strip().lower()):
+            raise HTTPException(status_code=403,
+                detail=f"Este servicio es de {trip['origin_municipality']}; tu municipio es {dmuni}")
         if trip["status"] != "solicitado":
             raise HTTPException(status_code=422,
                 detail=f"El viaje ya esta en estado '{trip['status']}'")
@@ -762,6 +786,8 @@ async def get_pending_requests(
 ) -> list:
     """Conductor obtiene solicitudes de taxi pendientes cercanas."""
     async with pool.acquire() as conn:
+        dmuni_pending = await conn.fetchval(
+            "SELECT taxi_municipality FROM drivers WHERE id=$1", driver.driver_id)
         rows = await conn.fetch(
             """SELECT
                    pt.id AS trip_id,
@@ -777,13 +803,15 @@ async def get_pending_requests(
                FROM particular_trips pt
                WHERE pt.status = 'solicitado'
                  AND pt.requested_at > NOW() - INTERVAL '10 minutes'
+                 AND ($3::TEXT IS NULL OR pt.origin_municipality IS NULL
+                      OR LOWER(TRIM(pt.origin_municipality)) = LOWER(TRIM($3)))
                  AND SQRT(
                      POWER((pt.origin_lat - $1) * 111320, 2) +
                      POWER((pt.origin_lng - $2) * 111320 * COS(RADIANS($1)), 2)
                  ) / 1000 <= 10
                ORDER BY distance_km
                LIMIT 5""",
-            lat, lng,
+            lat, lng, dmuni_pending,
         )
 
         result = []

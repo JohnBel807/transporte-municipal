@@ -704,21 +704,7 @@ export function PassengerPage() {
                     placeholder="Tu nombre y referencia del lugar de ubicación (opcional)"
                     value={taxiName}
                     onChange={e => setTaxiName(e.target.value)}
-                  />
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 text-xs text-slate-400">
-                      <input type="checkbox" checked={taxiLuggage}
-                        onChange={e => setTaxiLuggage(e.target.checked)}
-                        className="accent-teal-400"/>
-                      Equipaje (+$2.000)
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-slate-400">
-                      <input type="checkbox" checked={taxiAC}
-                        onChange={e => setTaxiAC(e.target.checked)}
-                        className="accent-teal-400"/>
-                      Aire acondicionado (+$1.000)
-                    </label>
-                  </div>
+                  /> 
                   {fareEstimate && (
                     <div className="bg-slate-800 border border-slate-700
                                     rounded-xl p-3 text-center">

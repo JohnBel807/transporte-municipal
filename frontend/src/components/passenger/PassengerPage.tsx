@@ -275,6 +275,7 @@ export function PassengerPage() {
       if (activeTripId) { alert('Ya tienes un viaje activo'); return }
       if (!taxiOrigin)  { alert('Escribe tu punto de recogida'); return }
       if (!destPos)     { alert('Toca el mapa para marcar tu destino'); return }
+      if (!passengerPos){ alert('Primero toca "Mi ubicación" para fijar tu punto de recogida'); return }
 
       const [lat, lng] = passengerPos ?? [5.9333, -73.6167]
 
@@ -303,29 +304,55 @@ export function PassengerPage() {
       setFareEstimate(data.estimated_fare)
       setTaxiStep('searching')
 
-      // Polling continuo para detectar el estado del viaje
-      if (tripPollRef.current) clearInterval(tripPollRef.current)
-      tripPollRef.current = setInterval(async () => {
-        try {
-          // 🟢 Añadido el prefijo /taxi/trips/.../status según la configuración del backend
-          const r = await fetch(`${API}/taxi/trips/${data.trip_id}/status`)
-          const d = await r.json()
-          
-          if (d && d.status) {
-            setTripStatus(d)
-            if (d.status !== 'solicitado') {
-              setTaxiStep('trip')
-            }
-            if (d.status === 'completado' || d.status === 'cancelado') {
-              if (tripPollRef.current) clearInterval(tripPollRef.current)
-            }
-          }
-        } catch {}
-      }, 4_000)
+      try { localStorage.setItem('active_taxi_trip', JSON.stringify({ id: data.trip_id, fare: data.estimated_fare })) } catch {}
+      startTripPolling(data.trip_id)
     } catch (err: any) {
       alert(err.message || 'Error al solicitar taxi')
     }
   }
+
+  function startTripPolling(tripId: string) {
+    if (tripPollRef.current) clearInterval(tripPollRef.current)
+    const poll = async () => {
+      try {
+        const r = await fetch(`${API}/taxi/trips/${tripId}/status`)
+        if (r.status === 404) { clearSavedTrip(); return }
+        const d = await r.json()
+        if (d && d.status) {
+          setTripStatus(d)
+          setTaxiStep(d.status === 'solicitado' ? 'searching' : 'trip')
+          if (d.status === 'completado' || d.status === 'cancelado') {
+            if (tripPollRef.current) clearInterval(tripPollRef.current)
+            clearSavedTrip(false)
+          }
+        }
+      } catch {}
+    }
+    poll()
+    tripPollRef.current = setInterval(poll, 4_000)
+  }
+
+  function clearSavedTrip(reset = true) {
+    try { localStorage.removeItem('active_taxi_trip') } catch {}
+    if (reset) {
+      if (tripPollRef.current) clearInterval(tripPollRef.current)
+      setTaxiStep('form'); setActiveTripId(null); setFareEstimate(null); setTripStatus(null)
+    }
+  }
+
+  // Restaurar viaje en curso al recargar la página / PWA
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('active_taxi_trip')
+      if (!raw) return
+      const saved = JSON.parse(raw)
+      if (!saved?.id) return
+      setTab('taxi'); setActiveTripId(saved.id); setFareEstimate(saved.fare ?? null)
+      setTaxiStep('searching')
+      startTripPolling(saved.id)
+    } catch {}
+    return () => { if (tripPollRef.current) clearInterval(tripPollRef.current) }
+  }, [])
 
   async function cancelTaxi() {
     setDestPos(null)
@@ -338,11 +365,7 @@ export function PassengerPage() {
         })
       } catch {}
     }
-    if (tripPollRef.current) clearInterval(tripPollRef.current)
-    setTaxiStep('form')
-    setActiveTripId(null)
-    setFareEstimate(null)
-    setTripStatus(null)
+    clearSavedTrip()
   }
 
   // ── Notificaciones ──────────────────────────────────────────────────────────

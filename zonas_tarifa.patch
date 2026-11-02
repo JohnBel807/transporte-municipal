@@ -1,0 +1,584 @@
+diff --git a/backend/app/core/geo.py b/backend/app/core/geo.py
+new file mode 100644
+index 0000000..7d1f106
+--- /dev/null
++++ b/backend/app/core/geo.py
+@@ -0,0 +1,25 @@
++"""Utilidades geográficas sin PostGIS."""
++
++
++def parse_polygon(raw) -> list[tuple[float, float]]:
++    """Convierte JSONB ([[lat,lng],...] o str JSON) en lista de tuplas."""
++    import json
++    if isinstance(raw, str):
++        raw = json.loads(raw)
++    return [(float(p[0]), float(p[1])) for p in raw]
++
++
++def point_in_polygon(lat: float, lng: float, poly: list[tuple[float, float]]) -> bool:
++    """Ray casting. poly = [(lat, lng), ...]"""
++    inside = False
++    n = len(poly)
++    if n < 3:
++        return False
++    j = n - 1
++    for i in range(n):
++        yi, xi = poly[i]
++        yj, xj = poly[j]
++        if (yi > lat) != (yj > lat) and lng < (xj - xi) * (lat - yi) / (yj - yi) + xi:
++            inside = not inside
++        j = i
++    return inside
+diff --git a/backend/app/main.py b/backend/app/main.py
+index 1e23223..e0e110d 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
+ from app.core.database import get_pool, close_database
+ from app.core.config import settings
+ from app.routers import auth_routes, route_routes, ws_routes, admin_routes
+-from app.routers import taxi_routes
++from app.routers import taxi_routes, fare_zones_routes
+ 
+ logging.basicConfig(
+     level=getattr(logging, settings.log_level, logging.INFO),
+@@ -45,6 +45,7 @@ app.include_router(route_routes.router)
+ app.include_router(ws_routes.router)
+ app.include_router(admin_routes.router)
+ app.include_router(taxi_routes.router)
++app.include_router(fare_zones_routes.router)
+ 
+ @app.get("/health", tags=["sistema"])
+ async def health() -> dict:
+diff --git a/backend/app/routers/fare_zones_routes.py b/backend/app/routers/fare_zones_routes.py
+new file mode 100644
+index 0000000..2c37b7e
+--- /dev/null
++++ b/backend/app/routers/fare_zones_routes.py
+@@ -0,0 +1,91 @@
++"""CRUD de zonas de tarifa fija (decretos municipales). Solo admin."""
++import json
++from uuid import UUID
++from fastapi import APIRouter, Depends, HTTPException
++from asyncpg import Pool
++from pydantic import BaseModel, Field, field_validator
++
++from app.core.database import get_pool
++from app.core.dependencies import get_current_admin
++
++router = APIRouter(prefix="/admin/fare-zones", tags=["fare-zones"],
++                   dependencies=[Depends(get_current_admin)])
++
++
++class FareZoneBody(BaseModel):
++    name: str = Field(min_length=2, max_length=120)
++    municipality: str = Field(min_length=2, max_length=80)
++    province: str = Field(default="velez", pattern="^(velez|ricaurte)$")
++    polygon: list[list[float]]
++    fixed_fare: float = Field(gt=0)
++    allow_surcharges: bool = False
++    decree_ref: str | None = None
++    priority: int = 0
++    is_active: bool = True
++
++    @field_validator("polygon")
++    @classmethod
++    def check_polygon(cls, v):
++        if len(v) < 3:
++            raise ValueError("El polígono necesita al menos 3 puntos")
++        for p in v:
++            if len(p) != 2 or not (-90 <= p[0] <= 90) or not (-180 <= p[1] <= 180):
++                raise ValueError("Cada punto debe ser [lat, lng] válido")
++        return v
++
++
++def _row(r) -> dict:
++    d = dict(r)
++    d["id"] = str(d["id"])
++    d["fixed_fare"] = float(d["fixed_fare"])
++    if isinstance(d["polygon"], str):
++        d["polygon"] = json.loads(d["polygon"])
++    d["created_at"] = d["created_at"].isoformat()
++    d["updated_at"] = d["updated_at"].isoformat()
++    return d
++
++
++@router.get("")
++async def list_zones(pool: Pool = Depends(get_pool)) -> list:
++    async with pool.acquire() as conn:
++        rows = await conn.fetch(
++            "SELECT * FROM fare_zones ORDER BY municipality, priority DESC, name")
++    return [_row(r) for r in rows]
++
++
++@router.post("", status_code=201)
++async def create_zone(body: FareZoneBody, pool: Pool = Depends(get_pool)) -> dict:
++    async with pool.acquire() as conn:
++        r = await conn.fetchrow(
++            """INSERT INTO fare_zones (name, municipality, province, polygon, fixed_fare,
++                   allow_surcharges, decree_ref, priority, is_active)
++               VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9) RETURNING *""",
++            body.name, body.municipality, body.province, json.dumps(body.polygon),
++            body.fixed_fare, body.allow_surcharges, body.decree_ref,
++            body.priority, body.is_active)
++    return _row(r)
++
++
++@router.put("/{zone_id}")
++async def update_zone(zone_id: UUID, body: FareZoneBody, pool: Pool = Depends(get_pool)) -> dict:
++    async with pool.acquire() as conn:
++        r = await conn.fetchrow(
++            """UPDATE fare_zones SET name=$2, municipality=$3, province=$4, polygon=$5::jsonb,
++                   fixed_fare=$6, allow_surcharges=$7, decree_ref=$8, priority=$9,
++                   is_active=$10, updated_at=NOW()
++               WHERE id=$1 RETURNING *""",
++            zone_id, body.name, body.municipality, body.province, json.dumps(body.polygon),
++            body.fixed_fare, body.allow_surcharges, body.decree_ref,
++            body.priority, body.is_active)
++    if not r:
++        raise HTTPException(404, "Zona no encontrada")
++    return _row(r)
++
++
++@router.delete("/{zone_id}")
++async def delete_zone(zone_id: UUID, pool: Pool = Depends(get_pool)) -> dict:
++    async with pool.acquire() as conn:
++        res = await conn.execute("DELETE FROM fare_zones WHERE id=$1", zone_id)
++    if res.endswith("0"):
++        raise HTTPException(404, "Zona no encontrada")
++    return {"deleted": str(zone_id)}
+diff --git a/backend/app/routers/taxi_routes.py b/backend/app/routers/taxi_routes.py
+index 0b8a1d0..635a301 100644
+--- a/backend/app/routers/taxi_routes.py
++++ b/backend/app/routers/taxi_routes.py
+@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
+ 
+ from app.core.database import get_pool
+ from app.core.dependencies import get_current_driver, DriverContext
++from app.core.geo import parse_polygon, point_in_polygon
+ 
+ log = logging.getLogger(__name__)
+ router = APIRouter(prefix="/taxi", tags=["taxi"])
+@@ -54,6 +55,28 @@ class TripRating(BaseModel):
+ 
+ # ── Utilidades ────────────────────────────────────────────────────────────────
+ 
++async def find_fare_zone(conn, o_lat, o_lng, d_lat, d_lng):
++    """Zona de tarifa fija (decreto) si origen y destino caen dentro del mismo polígono."""
++    if abs(o_lat - d_lat) < 1e-6 and abs(o_lng - d_lng) < 1e-6:
++        return None  # destino no definido
++    rows = await conn.fetch(
++        "SELECT * FROM fare_zones WHERE is_active ORDER BY priority DESC")
++    for z in rows:
++        poly = parse_polygon(z["polygon"])
++        if point_in_polygon(o_lat, o_lng, poly) and point_in_polygon(d_lat, d_lng, poly):
++            return z
++    return None
++
++
++def apply_fixed(fare: dict, fare_fixed) -> dict:
++    """Si el viaje tiene tarifa fija por decreto, sustituye los totales."""
++    if fare_fixed is None:
++        return fare
++    f = round(float(fare_fixed))
++    return {**fare, "fare_base": f, "fare_km": 0, "fare_time": 0,
++            "fare_surcharges": 0, "fare_total": f, "fixed_by_decree": True}
++
++
+ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+     """Distancia en km entre dos puntos GPS."""
+     R = 6371
+@@ -253,6 +276,15 @@ async def request_trip(
+             config=config,
+         )
+ 
++        fz = await find_fare_zone(conn, body.origin_lat, body.origin_lng,
++                                  body.dest_lat, body.dest_lng)
++        fare_fixed = None
++        if fz:
++            fare_fixed = float(fz["fixed_fare"])
++            if fz["allow_surcharges"]:
++                fare_fixed += est_fare["fare_surcharges"]
++            est_fare = apply_fixed(est_fare, fare_fixed)
++
+         # Zona
+         zone_id = await conn.fetchval(
+             """SELECT id FROM zones
+@@ -275,6 +307,10 @@ async def request_trip(
+             body.passenger_name, body.passenger_phone,
+             night, body.has_luggage, body.has_ac, zone_id,
+         )
++        if fz:
++            await conn.execute(
++                "UPDATE particular_trips SET fare_zone_id=$2, fare_fixed=$3 WHERE id=$1",
++                trip_id, fz["id"], fare_fixed)
+         
+         # Notificar a conductores disponibles via pg_notify
+         await conn.execute(
+@@ -424,7 +460,8 @@ async def update_trip_location(
+     async with pool.acquire() as conn:
+         trip = await conn.fetchrow(
+             """SELECT id, status, boarded_at, origin_lat, origin_lng,
+-                      road_type, is_night, is_holiday, has_luggage, has_ac
++                      road_type, is_night, is_holiday, has_luggage, has_ac,
++                      fare_fixed
+                FROM particular_trips
+                WHERE id=$1 AND driver_id=$2 AND status='en_curso'""",
+             trip_id, driver.driver_id,
+@@ -461,6 +498,7 @@ async def update_trip_location(
+             has_ac=trip["has_ac"],
+             config=config,
+         )
++        fare = apply_fixed(fare, trip["fare_fixed"])
+ 
+         # Actualizar ubicación del conductor
+         await conn.execute(
+@@ -491,7 +529,8 @@ async def complete_trip(
+     async with pool.acquire() as conn:
+         trip = await conn.fetchrow(
+             """SELECT id, status, boarded_at, origin_lat, origin_lng,
+-                      road_type, is_night, is_holiday, has_luggage, has_ac
++                      road_type, is_night, is_holiday, has_luggage, has_ac,
++                      fare_fixed
+                FROM particular_trips
+                WHERE id=$1 AND driver_id=$2 AND status='en_curso'""",
+             trip_id, driver.driver_id,
+@@ -539,6 +578,7 @@ async def complete_trip(
+             has_ac=trip["has_ac"],
+             config=config,
+         )
++        fare = apply_fixed(fare, trip["fare_fixed"])
+ 
+         await conn.execute(
+             """UPDATE particular_trips
+@@ -632,7 +672,7 @@ async def get_trip_status(
+                       pt.boarded_at, pt.fare_total,
+                       pt.km_recorridos, pt.minutes_elapsed,
+                       pt.fare_base, pt.fare_km, pt.fare_time,
+-                      pt.fare_surcharges,
++                      pt.fare_surcharges, pt.fare_fixed,
+                       u.full_name AS driver_name,
+                       v.plate, v.brand, v.model, v.vehicle_type,
+                       dl.lat AS driver_lat, dl.lng AS driver_lng
+@@ -668,6 +708,7 @@ async def get_trip_status(
+                 has_ac=False,
+                 config=config,
+             )
++            fare_current = apply_fixed(fare_current, trip["fare_fixed"])
+ 
+     return {
+         "trip_id":        trip_id,
+@@ -728,7 +769,7 @@ async def get_pending_requests(
+                    pt.origin_lat, pt.origin_lng,
+                    pt.origin_address, pt.dest_address,
+                    pt.dest_lat, pt.dest_lng,
+-                   pt.is_night, pt.has_luggage, pt.has_ac,
++                   pt.is_night, pt.has_luggage, pt.has_ac, pt.fare_fixed,
+                    SQRT(
+                        POWER((pt.origin_lat - $1) * 111320, 2) +
+                        POWER((pt.origin_lng - $2) * 111320 * COS(RADIANS($1)), 2)
+@@ -763,6 +804,7 @@ async def get_pending_requests(
+                 has_ac=r["has_ac"],
+                 config=config,
+             )
++            est_fare = apply_fixed(est_fare, r["fare_fixed"])
+             result.append({
+                 **dict(r),
+                 "estimated_fare": est_fare,
+diff --git a/backend/migrations_manual/001_fare_zones.sql b/backend/migrations_manual/001_fare_zones.sql
+new file mode 100644
+index 0000000..82a10dc
+--- /dev/null
++++ b/backend/migrations_manual/001_fare_zones.sql
+@@ -0,0 +1,17 @@
++CREATE TABLE IF NOT EXISTS fare_zones (
++  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  name TEXT NOT NULL,
++  municipality TEXT NOT NULL,
++  province TEXT NOT NULL DEFAULT 'velez',
++  polygon JSONB NOT NULL,
++  fixed_fare NUMERIC NOT NULL CHECK (fixed_fare > 0),
++  allow_surcharges BOOLEAN NOT NULL DEFAULT FALSE,
++  decree_ref TEXT,
++  priority INT NOT NULL DEFAULT 0,
++  is_active BOOLEAN NOT NULL DEFAULT TRUE,
++  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
++  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
++);
++ALTER TABLE particular_trips
++  ADD COLUMN IF NOT EXISTS fare_zone_id UUID REFERENCES fare_zones(id) ON DELETE SET NULL,
++  ADD COLUMN IF NOT EXISTS fare_fixed NUMERIC;
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 497a73d..5b7414e 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -12,6 +12,7 @@ import { TripHistoryPage }     from './components/reports/TripHistoryPage'
+ import { DriverSchedulePage }  from './components/driver/DriverSchedulePage'
+ import { RoutesListPage }      from './components/admin/RoutesListPage'
+ import { PassengerPage }       from './components/passenger/PassengerPage'
++import { FareZonesPage }       from './components/admin/FareZonesPage'
+ 
+ const queryClient = new QueryClient({
+   defaultOptions: { queries: { retry: 2, staleTime: 0 } },
+@@ -45,6 +46,7 @@ export default function App() {
+           <Route path="/drivers"   element={<RequireAuth><DriversListPage /></RequireAuth>}/>
+           <Route path="/drivers/new" element={<RequireAuth><DriverRegisterPage /></RequireAuth>}/>
+           <Route path="/routes"    element={<RequireAuth><RoutesListPage /></RequireAuth>}/>
++          <Route path="/fare-zones" element={<RequireAuth><FareZonesPage /></RequireAuth>}/>
+           <Route path="/history"   element={<RequireAuth><TripHistoryPage /></RequireAuth>}/>
+ 
+           {/* Conductor */}
+diff --git a/frontend/src/components/admin/FareZonesPage.tsx b/frontend/src/components/admin/FareZonesPage.tsx
+new file mode 100644
+index 0000000..5fb1755
+--- /dev/null
++++ b/frontend/src/components/admin/FareZonesPage.tsx
+@@ -0,0 +1,142 @@
++import { useState } from 'react'
++import { useNavigate } from 'react-router-dom'
++import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
++import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, useMapEvents } from 'react-leaflet'
++import { api } from '../../services/apiClient'
++
++interface Zone {
++  id: string; name: string; municipality: string; province: string
++  polygon: [number, number][]; fixed_fare: number; allow_surcharges: boolean
++  decree_ref: string | null; priority: number; is_active: boolean
++}
++
++const EMPTY = {
++  name: '', municipality: '', province: 'velez', fixed_fare: 7000,
++  allow_surcharges: false, decree_ref: '', priority: 0, is_active: true,
++}
++
++function Clicker({ onAdd }: { onAdd: (p: [number, number]) => void }) {
++  useMapEvents({ click(e) { onAdd([e.latlng.lat, e.latlng.lng]) } })
++  return null
++}
++
++export function FareZonesPage() {
++  const navigate = useNavigate()
++  const qc = useQueryClient()
++  const [form, setForm] = useState({ ...EMPTY })
++  const [points, setPoints] = useState<[number, number][]>([])
++  const [editId, setEditId] = useState<string | null>(null)
++
++  const { data: zones = [] } = useQuery<Zone[]>({
++    queryKey: ['fare-zones'],
++    queryFn: async () => (await api.get('/admin/fare-zones')).data,
++  })
++
++  const reset = () => { setForm({ ...EMPTY }); setPoints([]); setEditId(null) }
++
++  const save = useMutation({
++    mutationFn: () => {
++      const body = { ...form, fixed_fare: Number(form.fixed_fare), priority: Number(form.priority),
++        decree_ref: form.decree_ref || null, polygon: points }
++      return editId ? api.put(`/admin/fare-zones/${editId}`, body) : api.post('/admin/fare-zones', body)
++    },
++    onSuccess: () => { qc.invalidateQueries({ queryKey: ['fare-zones'] }); reset() },
++    onError: (e: any) => alert(JSON.stringify(e?.response?.data?.detail ?? 'Error al guardar')),
++  })
++
++  const del = useMutation({
++    mutationFn: (id: string) => api.delete(`/admin/fare-zones/${id}`),
++    onSuccess: () => qc.invalidateQueries({ queryKey: ['fare-zones'] }),
++  })
++
++  const edit = (z: Zone) => {
++    setEditId(z.id); setPoints(z.polygon)
++    setForm({ name: z.name, municipality: z.municipality, province: z.province,
++      fixed_fare: z.fixed_fare, allow_surcharges: z.allow_surcharges,
++      decree_ref: z.decree_ref ?? '', priority: z.priority, is_active: z.is_active })
++  }
++
++  const inp = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-teal-500'
++  const canSave = form.name.length >= 2 && form.municipality.length >= 2 && points.length >= 3 && Number(form.fixed_fare) > 0
++
++  return (
++    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
++      <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
++        <h1 className="text-sm font-semibold">Tarifas por zona (decretos municipales)</h1>
++        <button onClick={() => navigate('/dashboard')} className="text-sm text-slate-400 hover:text-white">← Volver</button>
++      </header>
++      <div className="flex-1 flex flex-col lg:flex-row gap-4 p-4">
++        <div className="lg:w-80 space-y-3 shrink-0">
++          <input className={inp} placeholder="Nombre (ej. Casco urbano Barbosa)" value={form.name}
++            onChange={e => setForm({ ...form, name: e.target.value })} />
++          <input className={inp} placeholder="Municipio" value={form.municipality}
++            onChange={e => setForm({ ...form, municipality: e.target.value })} />
++          <select className={inp} value={form.province} onChange={e => setForm({ ...form, province: e.target.value })}>
++            <option value="velez">Provincia de Vélez</option>
++            <option value="ricaurte">Provincia de Ricaurte</option>
++          </select>
++          <input className={inp} type="number" placeholder="Tarifa fija COP" value={form.fixed_fare}
++            onChange={e => setForm({ ...form, fixed_fare: Number(e.target.value) })} />
++          <input className={inp} placeholder="Decreto / resolución (opcional)" value={form.decree_ref}
++            onChange={e => setForm({ ...form, decree_ref: e.target.value })} />
++          <input className={inp} type="number" placeholder="Prioridad (mayor gana)" value={form.priority}
++            onChange={e => setForm({ ...form, priority: Number(e.target.value) })} />
++          <label className="flex items-center gap-2 text-xs text-slate-300">
++            <input type="checkbox" checked={form.allow_surcharges}
++              onChange={e => setForm({ ...form, allow_surcharges: e.target.checked })} />
++            Permitir recargos (nocturno, equipaje, A/C)
++          </label>
++          <label className="flex items-center gap-2 text-xs text-slate-300">
++            <input type="checkbox" checked={form.is_active}
++              onChange={e => setForm({ ...form, is_active: e.target.checked })} />
++            Activa
++          </label>
++          <p className="text-xs text-slate-500">Puntos dibujados: {points.length} (mínimo 3). Haz clic en el mapa.</p>
++          <div className="flex gap-2">
++            <button onClick={() => setPoints(points.slice(0, -1))} className="flex-1 py-2 text-xs border border-slate-700 rounded-lg">Deshacer punto</button>
++            <button onClick={() => setPoints([])} className="flex-1 py-2 text-xs border border-slate-700 rounded-lg">Limpiar</button>
++          </div>
++          <div className="flex gap-2">
++            {editId && <button onClick={reset} className="flex-1 py-2 text-sm border border-slate-700 rounded-lg">Cancelar</button>}
++            <button disabled={!canSave || save.isPending} onClick={() => save.mutate()}
++              className="flex-1 py-2 text-sm bg-teal-500 text-slate-950 font-semibold rounded-lg disabled:opacity-40">
++              {editId ? 'Actualizar' : 'Guardar zona'}
++            </button>
++          </div>
++        </div>
++
++        <div className="flex-1 space-y-3 min-w-0">
++          <div style={{ height: 420 }}>
++            <MapContainer center={[5.93, -73.62]} zoom={11} style={{ height: '100%', width: '100%' }} className="rounded-xl">
++              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
++              <Clicker onAdd={p => setPoints(prev => [...prev, p])} />
++              {zones.filter(z => z.id !== editId).map(z => (
++                <Polygon key={z.id} positions={z.polygon}
++                  pathOptions={{ color: z.is_active ? '#2dd4bf' : '#64748b', weight: 2 }} />
++              ))}
++              {points.length >= 3 && <Polygon positions={points} pathOptions={{ color: '#fbbf24' }} />}
++              {points.length > 0 && points.length < 3 && <Polyline positions={points} pathOptions={{ color: '#fbbf24' }} />}
++              {points.map((p, i) => <CircleMarker key={i} center={p} radius={4} pathOptions={{ color: '#fbbf24' }} />)}
++            </MapContainer>
++          </div>
++          <div className="space-y-2">
++            {zones.length === 0 && <p className="text-sm text-slate-600">Aún no hay zonas.</p>}
++            {zones.map(z => (
++              <div key={z.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2">
++                <div className="min-w-0">
++                  <p className="text-sm font-semibold truncate">{z.name} · ${z.fixed_fare.toLocaleString('es-CO')}</p>
++                  <p className="text-xs text-slate-500">{z.municipality} · {z.province}{z.decree_ref ? ` · ${z.decree_ref}` : ''}{z.is_active ? '' : ' · inactiva'}</p>
++                </div>
++                <div className="flex gap-2 shrink-0">
++                  <button onClick={() => edit(z)} className="text-xs px-3 py-1.5 border border-slate-700 rounded-lg">Editar</button>
++                  <button onClick={() => { if (confirm('¿Eliminar zona?')) del.mutate(z.id) }}
++                    className="text-xs px-3 py-1.5 border border-red-500/30 text-red-400 rounded-lg">Eliminar</button>
++                </div>
++              </div>
++            ))}
++          </div>
++        </div>
++      </div>
++    </div>
++  )
++}
+diff --git a/frontend/src/components/map/DashboardPage.tsx b/frontend/src/components/map/DashboardPage.tsx
+index 995d7ec..e2aa213 100644
+--- a/frontend/src/components/map/DashboardPage.tsx
++++ b/frontend/src/components/map/DashboardPage.tsx
+@@ -88,6 +88,7 @@ export function DashboardPage() {
+           <button onClick={() => { logout(); navigate('/login') }} className="px-3 py-1.5 text-sm text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition">Salir</button>
+           <button onClick={() => navigate('/drivers/new')} className="px-3 py-1.5 text-sm text-teal-400 hover:text-teal-300 rounded-lg hover:bg-slate-800 transition">+ Conductor</button>
+           <button onClick={() => navigate('/drivers')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">Conductores</button>
++          <button onClick={() => navigate('/fare-zones')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">Tarifas</button>
+           <button onClick={() => navigate('/history')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">Historial</button>
+           <button onClick={() => navigate('/routes')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+   Rutas
+diff --git a/frontend/src/components/passenger/PassengerPage.tsx b/frontend/src/components/passenger/PassengerPage.tsx
+index d9ad0b0..2cd9bda 100644
+--- a/frontend/src/components/passenger/PassengerPage.tsx
++++ b/frontend/src/components/passenger/PassengerPage.tsx
+@@ -1,6 +1,6 @@
+ import { useState, useEffect, useRef } from 'react'
+ import { useNavigate } from 'react-router-dom'
+-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
++import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
+ import L from 'leaflet'
+ import { useAuthStore } from '../../store/authStore'
+ 
+@@ -101,6 +101,11 @@ function makePassengerIcon() {
+ 
+ // ── Componente principal ──────────────────────────────────────────────────────
+ 
++function DestPicker({ enabled, onPick }: { enabled: boolean; onPick: (lat: number, lng: number) => void }) {
++  useMapEvents({ click(e) { if (enabled) onPick(e.latlng.lat, e.latlng.lng) } })
++  return null
++}
++
+ export function PassengerPage() {
+   const navigate    = useNavigate()
+   const { isAuthenticated, user } = useAuthStore()
+@@ -119,6 +124,7 @@ export function PassengerPage() {
+   const [taxiStep, setTaxiStep]         = useState<'form' | 'searching' | 'trip'>('form')
+   const [taxiOrigin, setTaxiOrigin]     = useState('')
+   const [taxiDest, setTaxiDest]         = useState('')
++  const [destPos, setDestPos]           = useState<[number,number] | null>(null)
+   const [taxiName, setTaxiName]         = useState('')
+   const [taxiPhone, setTaxiPhone]       = useState('')
+   const [taxiLuggage, setTaxiLuggage]   = useState(false)
+@@ -255,10 +261,20 @@ export function PassengerPage() {
+     } catch {}
+   }
+ 
++  async function pickDest(lat: number, lng: number) {
++    setDestPos([lat, lng])
++    setTaxiDest(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
++    try {
++      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
++      const d = await r.json()
++      if (d?.display_name) setTaxiDest(d.display_name.split(',').slice(0, 3).join(','))
++    } catch {}
++  }
++
+   async function requestTaxi() {
+       if (activeTripId) { alert('Ya tienes un viaje activo'); return }
+       if (!taxiOrigin)  { alert('Escribe tu punto de recogida'); return }
+-      if (!taxiDest)    { alert('Escribe tu destino'); return }
++      if (!destPos)     { alert('Toca el mapa para marcar tu destino'); return }
+ 
+       const [lat, lng] = passengerPos ?? [5.9333, -73.6167]
+ 
+@@ -271,8 +287,8 @@ export function PassengerPage() {
+             origin_lat: lat, 
+             origin_lng: lng,
+             origin_address: taxiOrigin,
+-            dest_lat: lat, 
+-            dest_lng: lng,
++            dest_lat: destPos[0],
++            dest_lng: destPos[1],
+             dest_address: taxiDest,
+             passenger_name:  taxiName  || 'Pasajero',
+             passenger_phone: taxiPhone || '',
+@@ -312,6 +328,7 @@ export function PassengerPage() {
+   }
+ 
+   async function cancelTaxi() {
++    setDestPos(null)
+     if (activeTripId) {
+       try {
+         await fetch(`${API}/taxi/trips/${activeTripId}/cancel`, {
+@@ -426,6 +443,11 @@ export function PassengerPage() {
+             attribution="© OpenStreetMap"
+           />
+ 
++          <DestPicker enabled={tab === 'taxi' && !activeTripId} onPick={pickDest} />
++          {tab === 'taxi' && destPos && (
++            <Marker position={destPos}><Popup>Destino</Popup></Marker>
++          )}
++
+           {/* Posición del pasajero */}
+           {passengerPos && (
+             <Marker position={passengerPos} icon={makePassengerIcon()}>
+@@ -693,7 +715,7 @@ export function PassengerPage() {
+                     className="w-full bg-slate-800 border border-slate-700 rounded-lg
+                                px-3 py-2.5 text-sm text-white placeholder-slate-500
+                                focus:outline-none focus:ring-1 focus:ring-teal-500"
+-                    placeholder="🏁 ¿A dónde vas?"
++                    placeholder="🏁 Toca el mapa para marcar el destino"
+                     value={taxiDest}
+                     onChange={e => setTaxiDest(e.target.value)}
+                   />

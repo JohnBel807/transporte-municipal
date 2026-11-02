@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { useAuthStore } from '../../store/authStore'
 
@@ -101,6 +101,11 @@ function makePassengerIcon() {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
+function DestPicker({ enabled, onPick }: { enabled: boolean; onPick: (lat: number, lng: number) => void }) {
+  useMapEvents({ click(e) { if (enabled) onPick(e.latlng.lat, e.latlng.lng) } })
+  return null
+}
+
 export function PassengerPage() {
   const navigate    = useNavigate()
   const { isAuthenticated, user } = useAuthStore()
@@ -119,6 +124,7 @@ export function PassengerPage() {
   const [taxiStep, setTaxiStep]         = useState<'form' | 'searching' | 'trip'>('form')
   const [taxiOrigin, setTaxiOrigin]     = useState('')
   const [taxiDest, setTaxiDest]         = useState('')
+  const [destPos, setDestPos]           = useState<[number,number] | null>(null)
   const [taxiName, setTaxiName]         = useState('')
   const [taxiPhone, setTaxiPhone]       = useState('')
   const [taxiLuggage, setTaxiLuggage]   = useState(false)
@@ -255,10 +261,20 @@ export function PassengerPage() {
     } catch {}
   }
 
+  async function pickDest(lat: number, lng: number) {
+    setDestPos([lat, lng])
+    setTaxiDest(`${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+      const d = await r.json()
+      if (d?.display_name) setTaxiDest(d.display_name.split(',').slice(0, 3).join(','))
+    } catch {}
+  }
+
   async function requestTaxi() {
       if (activeTripId) { alert('Ya tienes un viaje activo'); return }
       if (!taxiOrigin)  { alert('Escribe tu punto de recogida'); return }
-      if (!taxiDest)    { alert('Escribe tu destino'); return }
+      if (!destPos)     { alert('Toca el mapa para marcar tu destino'); return }
 
       const [lat, lng] = passengerPos ?? [5.9333, -73.6167]
 
@@ -271,8 +287,8 @@ export function PassengerPage() {
             origin_lat: lat, 
             origin_lng: lng,
             origin_address: taxiOrigin,
-            dest_lat: lat, 
-            dest_lng: lng,
+            dest_lat: destPos[0],
+            dest_lng: destPos[1],
             dest_address: taxiDest,
             passenger_name:  taxiName  || 'Pasajero',
             passenger_phone: taxiPhone || '',
@@ -312,6 +328,7 @@ export function PassengerPage() {
   }
 
   async function cancelTaxi() {
+    setDestPos(null)
     if (activeTripId) {
       try {
         await fetch(`${API}/taxi/trips/${activeTripId}/cancel`, {
@@ -425,6 +442,11 @@ export function PassengerPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution="© OpenStreetMap"
           />
+
+          <DestPicker enabled={tab === 'taxi' && !activeTripId} onPick={pickDest} />
+          {tab === 'taxi' && destPos && (
+            <Marker position={destPos}><Popup>Destino</Popup></Marker>
+          )}
 
           {/* Posición del pasajero */}
           {passengerPos && (
@@ -693,7 +715,7 @@ export function PassengerPage() {
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg
                                px-3 py-2.5 text-sm text-white placeholder-slate-500
                                focus:outline-none focus:ring-1 focus:ring-teal-500"
-                    placeholder="🏁 ¿A dónde vas?"
+                    placeholder="🏁 Toca el mapa para marcar el destino"
                     value={taxiDest}
                     onChange={e => setTaxiDest(e.target.value)}
                   />

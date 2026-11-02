@@ -88,6 +88,7 @@ export function DashboardPage() {
           <button onClick={() => { logout(); navigate('/login') }} className="px-3 py-1.5 text-sm text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition">Salir</button>
           <button onClick={() => navigate('/drivers/new')} className="px-3 py-1.5 text-sm text-teal-400 hover:text-teal-300 rounded-lg hover:bg-slate-800 transition">+ Conductor</button>
           <button onClick={() => navigate('/drivers')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">Conductores</button>
+          <button onClick={() => navigate('/fare-zones')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">Tarifas</button>
           <button onClick={() => navigate('/history')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">Historial</button>
           <button onClick={() => navigate('/routes')} className="px-3 py-1.5 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
   Rutas

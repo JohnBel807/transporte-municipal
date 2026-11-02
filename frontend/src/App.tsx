@@ -12,6 +12,7 @@ import { TripHistoryPage }     from './components/reports/TripHistoryPage'
 import { DriverSchedulePage }  from './components/driver/DriverSchedulePage'
 import { RoutesListPage }      from './components/admin/RoutesListPage'
 import { PassengerPage }       from './components/passenger/PassengerPage'
+import { FareZonesPage }       from './components/admin/FareZonesPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 0 } },
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="/drivers"   element={<RequireAuth><DriversListPage /></RequireAuth>}/>
           <Route path="/drivers/new" element={<RequireAuth><DriverRegisterPage /></RequireAuth>}/>
           <Route path="/routes"    element={<RequireAuth><RoutesListPage /></RequireAuth>}/>
+          <Route path="/fare-zones" element={<RequireAuth><FareZonesPage /></RequireAuth>}/>
           <Route path="/history"   element={<RequireAuth><TripHistoryPage /></RequireAuth>}/>
 
           {/* Conductor */}

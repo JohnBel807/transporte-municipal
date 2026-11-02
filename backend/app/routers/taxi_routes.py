@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_pool
 from app.core.dependencies import get_current_driver, DriverContext
+from app.core.geo import parse_polygon, point_in_polygon
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/taxi", tags=["taxi"])
@@ -53,6 +54,28 @@ class TripRating(BaseModel):
 
 
 # ── Utilidades ────────────────────────────────────────────────────────────────
+
+async def find_fare_zone(conn, o_lat, o_lng, d_lat, d_lng):
+    """Zona de tarifa fija (decreto) si origen y destino caen dentro del mismo polígono."""
+    if abs(o_lat - d_lat) < 1e-6 and abs(o_lng - d_lng) < 1e-6:
+        return None  # destino no definido
+    rows = await conn.fetch(
+        "SELECT * FROM fare_zones WHERE is_active ORDER BY priority DESC")
+    for z in rows:
+        poly = parse_polygon(z["polygon"])
+        if point_in_polygon(o_lat, o_lng, poly) and point_in_polygon(d_lat, d_lng, poly):
+            return z
+    return None
+
+
+def apply_fixed(fare: dict, fare_fixed) -> dict:
+    """Si el viaje tiene tarifa fija por decreto, sustituye los totales."""
+    if fare_fixed is None:
+        return fare
+    f = round(float(fare_fixed))
+    return {**fare, "fare_base": f, "fare_km": 0, "fare_time": 0,
+            "fare_surcharges": 0, "fare_total": f, "fixed_by_decree": True}
+
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     """Distancia en km entre dos puntos GPS."""
@@ -253,6 +276,15 @@ async def request_trip(
             config=config,
         )
 
+        fz = await find_fare_zone(conn, body.origin_lat, body.origin_lng,
+                                  body.dest_lat, body.dest_lng)
+        fare_fixed = None
+        if fz:
+            fare_fixed = float(fz["fixed_fare"])
+            if fz["allow_surcharges"]:
+                fare_fixed += est_fare["fare_surcharges"]
+            est_fare = apply_fixed(est_fare, fare_fixed)
+
         # Zona
         zone_id = await conn.fetchval(
             """SELECT id FROM zones
@@ -275,6 +307,10 @@ async def request_trip(
             body.passenger_name, body.passenger_phone,
             night, body.has_luggage, body.has_ac, zone_id,
         )
+        if fz:
+            await conn.execute(
+                "UPDATE particular_trips SET fare_zone_id=$2, fare_fixed=$3 WHERE id=$1",
+                trip_id, fz["id"], fare_fixed)
         
         # Notificar a conductores disponibles via pg_notify
         await conn.execute(
@@ -424,7 +460,8 @@ async def update_trip_location(
     async with pool.acquire() as conn:
         trip = await conn.fetchrow(
             """SELECT id, status, boarded_at, origin_lat, origin_lng,
-                      road_type, is_night, is_holiday, has_luggage, has_ac
+                      road_type, is_night, is_holiday, has_luggage, has_ac,
+                      fare_fixed
                FROM particular_trips
                WHERE id=$1 AND driver_id=$2 AND status='en_curso'""",
             trip_id, driver.driver_id,
@@ -461,6 +498,7 @@ async def update_trip_location(
             has_ac=trip["has_ac"],
             config=config,
         )
+        fare = apply_fixed(fare, trip["fare_fixed"])
 
         # Actualizar ubicación del conductor
         await conn.execute(
@@ -491,7 +529,8 @@ async def complete_trip(
     async with pool.acquire() as conn:
         trip = await conn.fetchrow(
             """SELECT id, status, boarded_at, origin_lat, origin_lng,
-                      road_type, is_night, is_holiday, has_luggage, has_ac
+                      road_type, is_night, is_holiday, has_luggage, has_ac,
+                      fare_fixed
                FROM particular_trips
                WHERE id=$1 AND driver_id=$2 AND status='en_curso'""",
             trip_id, driver.driver_id,
@@ -539,6 +578,7 @@ async def complete_trip(
             has_ac=trip["has_ac"],
             config=config,
         )
+        fare = apply_fixed(fare, trip["fare_fixed"])
 
         await conn.execute(
             """UPDATE particular_trips
@@ -632,7 +672,7 @@ async def get_trip_status(
                       pt.boarded_at, pt.fare_total,
                       pt.km_recorridos, pt.minutes_elapsed,
                       pt.fare_base, pt.fare_km, pt.fare_time,
-                      pt.fare_surcharges,
+                      pt.fare_surcharges, pt.fare_fixed,
                       u.full_name AS driver_name,
                       v.plate, v.brand, v.model, v.vehicle_type,
                       dl.lat AS driver_lat, dl.lng AS driver_lng
@@ -668,6 +708,7 @@ async def get_trip_status(
                 has_ac=False,
                 config=config,
             )
+            fare_current = apply_fixed(fare_current, trip["fare_fixed"])
 
     return {
         "trip_id":        trip_id,
@@ -728,7 +769,7 @@ async def get_pending_requests(
                    pt.origin_lat, pt.origin_lng,
                    pt.origin_address, pt.dest_address,
                    pt.dest_lat, pt.dest_lng,
-                   pt.is_night, pt.has_luggage, pt.has_ac,
+                   pt.is_night, pt.has_luggage, pt.has_ac, pt.fare_fixed,
                    SQRT(
                        POWER((pt.origin_lat - $1) * 111320, 2) +
                        POWER((pt.origin_lng - $2) * 111320 * COS(RADIANS($1)), 2)
@@ -763,6 +804,7 @@ async def get_pending_requests(
                 has_ac=r["has_ac"],
                 config=config,
             )
+            est_fare = apply_fixed(est_fare, r["fare_fixed"])
             result.append({
                 **dict(r),
                 "estimated_fare": est_fare,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../services/apiClient'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -90,10 +90,27 @@ function MapClickHandler({ onSelectLocation }: { onSelectLocation: (lat: number,
   return null
 }
 
+interface ApiTemplate {
+  id: string; name: string; description: string; base_fare: number
+  estimated_duration_min: number; tolerance_m: number; waypoints: Waypoint[]
+  visibility: 'private' | 'shared'; is_official: boolean; is_mine: boolean
+  owner_name: string; uses_count: number
+}
+
 export function DriverRouteCreatePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selectedWpIdx, setSelectedWpIdx] = useState<number>(0)
+  const [tplTab, setTplTab] = useState<'sugeridas' | 'mias' | 'compartidas'>('sugeridas')
+  const [shareNew, setShareNew] = useState(false)
+
+  const { data: apiTemplates = [] } = useQuery<ApiTemplate[]>({
+    queryKey: ['route-templates'],
+    queryFn: async () => (await api.get('/route-templates')).data,
+    retry: false,
+  })
+  const myTemplates = apiTemplates.filter(t => t.is_mine)
+  const sharedTemplates = apiTemplates.filter(t => !t.is_mine && (t.is_official || t.visibility === 'shared'))
   const [form, setForm] = useState<RouteForm>({
     route_name: '',
     description: '',
@@ -172,6 +189,47 @@ export function DriverRouteCreatePage() {
     })
   }
 
+  const applyApiTemplate = (t: ApiTemplate) => {
+    applyTemplate({
+      name: t.name, description: t.description, base_fare: Number(t.base_fare),
+      estimated_duration_min: t.estimated_duration_min, tolerance_m: t.tolerance_m,
+      waypoints: [...t.waypoints].sort((a, b) => a.sequence_order - b.sequence_order),
+    } as any)
+    api.post(`/route-templates/${t.id}/use`).catch(() => {})
+  }
+
+  const saveTemplate = useMutation({
+    mutationFn: () => api.post('/route-templates', {
+      name: form.route_name, description: form.description,
+      base_fare: Number(form.base_fare),
+      estimated_duration_min: Number(form.estimated_duration_min),
+      tolerance_m: Number(form.tolerance_m),
+      visibility: shareNew ? 'shared' : 'private',
+      waypoints: form.waypoints.map((w, i) => ({
+        ...w, sequence_order: i,
+        latitude: Number(w.latitude), longitude: Number(w.longitude),
+        estimated_wait_min: Number(w.estimated_wait_min),
+      })),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['route-templates'] })
+      alert(shareNew ? 'Plantilla guardada y compartida' : 'Plantilla guardada')
+      setTplTab('mias')
+    },
+    onError: (err: any) => alert(JSON.stringify(err?.response?.data?.detail ?? 'No se pudo guardar la plantilla')),
+  })
+
+  const toggleShare = useMutation({
+    mutationFn: (t: ApiTemplate) =>
+      api.patch(`/route-templates/${t.id}`, { visibility: t.visibility === 'shared' ? 'private' : 'shared' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['route-templates'] }),
+  })
+
+  const deleteTemplate = useMutation({
+    mutationFn: (id: string) => api.delete(`/route-templates/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['route-templates'] }),
+  })
+
   const mutation = useMutation({
     mutationFn: (data: RouteForm) => api.post('/routes/', data),
     onSuccess: () => {
@@ -217,22 +275,81 @@ export function DriverRouteCreatePage() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Sección de Plantillas Rápidas */}
+        {/* Plantillas */}
         <section className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-          <h2 className="text-xs font-semibold text-teal-400 uppercase tracking-wider mb-3">Cargar Plantilla de Ruta</h2>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {PRESET_TEMPLATES.map((tmpl, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => applyTemplate(tmpl)}
-                className="shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl px-3 py-2 text-left transition"
-              >
-                <div className="text-xs font-medium text-white">{tmpl.name}</div>
-                <div className="text-[10px] text-slate-400">${tmpl.base_fare} COP</div>
+          <h2 className="text-xs font-semibold text-teal-400 uppercase tracking-wider mb-3">Plantillas de Ruta</h2>
+          <div className="flex gap-1 mb-3">
+            {([['sugeridas', 'Sugeridas'], ['mias', `Mis plantillas (${myTemplates.length})`],
+               ['compartidas', `Compartidas (${sharedTemplates.length})`]] as const).map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setTplTab(k)}
+                className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg border transition
+                  ${tplTab === k ? 'bg-teal-500/15 border-teal-500/40 text-teal-300'
+                                 : 'bg-slate-800 border-slate-700 text-slate-400'}`}>
+                {label}
               </button>
             ))}
           </div>
+
+          {tplTab === 'sugeridas' && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {PRESET_TEMPLATES.map((tmpl, i) => (
+                <button key={i} type="button" onClick={() => applyTemplate(tmpl)}
+                  className="shrink-0 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl px-3 py-2 text-left transition">
+                  <div className="text-xs font-medium text-white">{tmpl.name}</div>
+                  <div className="text-[10px] text-slate-400">${tmpl.base_fare} COP</div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {tplTab === 'mias' && (
+            <div className="space-y-2">
+              {myTemplates.length === 0 && (
+                <p className="text-xs text-slate-500">Aún no tienes plantillas. Llena el formulario y usa "Guardar como plantilla".</p>
+              )}
+              {myTemplates.map(t => (
+                <div key={t.id} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                  <button type="button" onClick={() => applyApiTemplate(t)} className="w-full text-left">
+                    <div className="text-xs font-medium text-white">{t.name}</div>
+                    <div className="text-[10px] text-slate-400">
+                      {t.waypoints.length} paradas · ${Number(t.base_fare).toLocaleString('es-CO')} COP
+                      {t.visibility === 'shared' ? ' · 🌐 compartida' : ' · 🔒 privada'}
+                    </div>
+                  </button>
+                  <div className="flex gap-2 mt-2">
+                    <button type="button" onClick={() => toggleShare.mutate(t)}
+                      className="flex-1 py-1 text-[11px] border border-slate-600 rounded-lg text-slate-300">
+                      {t.visibility === 'shared' ? 'Dejar de compartir' : 'Compartir'}
+                    </button>
+                    <button type="button"
+                      onClick={() => { if (window.confirm('¿Eliminar plantilla?')) deleteTemplate.mutate(t.id) }}
+                      className="py-1 px-3 text-[11px] border border-red-500/30 text-red-400 rounded-lg">
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {tplTab === 'compartidas' && (
+            <div className="space-y-2">
+              {sharedTemplates.length === 0 && (
+                <p className="text-xs text-slate-500">Todavía nadie ha compartido rutas.</p>
+              )}
+              {sharedTemplates.map(t => (
+                <button key={t.id} type="button" onClick={() => applyApiTemplate(t)}
+                  className="w-full text-left bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-3 transition">
+                  <div className="text-xs font-medium text-white">
+                    {t.is_official && <span className="text-teal-400">★ </span>}{t.name}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    {t.waypoints.length} paradas · por {t.owner_name} · usada {t.uses_count} veces
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -410,6 +527,22 @@ export function DriverRouteCreatePage() {
                 </div>
               )
             })}
+          </section>
+
+          {/* Guardar como plantilla */}
+          <section className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Plantilla</h2>
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input type="checkbox" checked={shareNew} onChange={e => setShareNew(e.target.checked)} />
+              Compartir con otros conductores
+            </label>
+            <button type="button"
+              disabled={saveTemplate.isPending || form.route_name.trim().length < 3}
+              onClick={() => saveTemplate.mutate()}
+              className="w-full py-2.5 border border-teal-500/40 text-teal-300 rounded-xl text-sm
+                         hover:bg-teal-500/10 disabled:opacity-40 transition">
+              {saveTemplate.isPending ? 'Guardando...' : '💾 Guardar como plantilla'}
+            </button>
           </section>
 
           {/* Botones de Acción */}

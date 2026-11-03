@@ -713,6 +713,21 @@ export function DriverHomePage() {
                                transition mt-2">
                     🕐 Gestionar horarios
                   </button>
+                  <button
+                    onClick={async () => {
+                      const share = window.confirm('¿Compartir esta ruta con otros conductores?\nAceptar = compartir · Cancelar = solo para mí')
+                      try {
+                        await api.post(`/route-templates/from-route/${route.id}?visibility=${share ? 'shared' : 'private'}`)
+                        alert(share ? 'Plantilla guardada y compartida' : 'Plantilla guardada')
+                      } catch (e: any) {
+                        alert(e?.response?.data?.detail ?? 'No se pudo guardar la plantilla')
+                      }
+                    }}
+                    className="w-full py-2 text-xs text-slate-400 border border-slate-700
+                               rounded-lg hover:bg-slate-800 hover:text-teal-400
+                               transition mt-2">
+                    💾 Guardar como plantilla
+                  </button>
                 </div>
               )
             })}

@@ -118,6 +118,14 @@ export function DriverHomePage() {
     return () => stopTaxiPolling()
   }, [])
 
+  // Restaurar modo taxi y viaje activo desde el servidor al cargar / recargar
+  useEffect(() => {
+    api.get('/taxi/conductor/state').then(({ data }) => {
+      if (data?.taxi_mode) setTaxiMode(true)
+      if (data?.active_trip_id) { setTaxiMode(true); setActiveTaxiTrip(data.active_trip_id) }
+    }).catch(() => {})
+  }, [])
+
   // Arrancar polling si ya está en modo taxi al cargar
   useEffect(() => {
     if (taxiMode) startTaxiPolling()
@@ -627,6 +635,8 @@ export function DriverHomePage() {
                     onComplete={() => {
                       setActiveTaxiTrip(null)
                       queryClient.invalidateQueries({ queryKey: ['driver-taxi-mode'] })
+                      queryClient.invalidateQueries({ queryKey: ['taxi-pending-requests'] })
+                      startTaxiPolling()
                     }}
                   />
                 ) : (

@@ -203,6 +203,24 @@ async def set_taxi_mode(
     }
 
 
+@router.get("/conductor/state")
+async def get_driver_taxi_state(
+    pool:   Pool          = Depends(get_pool),
+    driver: DriverContext = Depends(get_current_driver),
+) -> dict:
+    """Estado del modo taxi y viaje activo (para restaurar el panel al recargar)."""
+    async with pool.acquire() as conn:
+        d = await conn.fetchrow(
+            "SELECT taxi_mode FROM drivers WHERE id=$1", driver.driver_id)
+        trip_id = await conn.fetchval(
+            """SELECT id FROM particular_trips
+               WHERE driver_id=$1 AND status IN ('aceptado','esperando','en_curso')
+               ORDER BY requested_at DESC LIMIT 1""",
+            driver.driver_id)
+    return {"taxi_mode": bool(d and d["taxi_mode"]),
+            "active_trip_id": str(trip_id) if trip_id else None}
+
+
 # ── Conductores disponibles cerca ─────────────────────────────────────────────
 
 @router.get("/drivers/nearby")
@@ -790,8 +808,8 @@ async def get_driver_trips(
 
 @router.get("/requests/pending")
 async def get_pending_requests(
-    lat: float = 5.877,
-    lng: float = -73.669,
+    lat: float | None = None,
+    lng: float | None = None,
     pool: Pool = Depends(get_pool),
     driver: DriverContext = Depends(get_current_driver),
 ) -> list:
@@ -799,6 +817,10 @@ async def get_pending_requests(
     async with pool.acquire() as conn:
         dmuni_pending = await conn.fetchval(
             "SELECT taxi_municipality FROM drivers WHERE id=$1", driver.driver_id)
+        if lat is None or lng is None:
+            loc = await conn.fetchrow(
+                "SELECT lat, lng FROM drivers_location WHERE driver_id=$1", driver.driver_id)
+            lat, lng = (float(loc["lat"]), float(loc["lng"])) if loc else (5.877, -73.669)
         rows = await conn.fetch(
             """SELECT
                    pt.id AS trip_id,

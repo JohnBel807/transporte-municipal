@@ -779,6 +779,16 @@ export function PassengerPage() {
                   <p className="text-xs text-slate-500">
                     Tu solicitud fue enviada. Espera mientras un conductor la acepta.
                   </p>
+                  {fareEstimate && (
+                    <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                      <p className="text-2xl font-bold text-teal-400">
+                        ~${fareEstimate.fare_total.toLocaleString('es-CO')}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {fareEstimate.fixed_by_decree ? 'Tarifa por decreto municipal' : 'Tarifa estimada'}
+                      </p>
+                    </div>
+                  )}
                   <div className="flex justify-center">
                     <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"/>
                   </div>
@@ -808,6 +818,12 @@ export function PassengerPage() {
                     {tripStatus.driver && (
                       <p className="text-sm font-semibold text-white">
                         {tripStatus.driver.name} · {tripStatus.driver.plate}
+                      </p>
+                    )}
+                    {(tripStatus.status === 'aceptado' || tripStatus.status === 'esperando') && fareEstimate && (
+                      <p className="text-xl font-bold text-teal-400 mt-2">
+                        ~${fareEstimate.fare_total.toLocaleString('es-CO')}
+                        <span className="text-xs text-slate-500 font-normal"> estimado</span>
                       </p>
                     )}
                     {tripStatus.status === 'en_curso' && tripStatus.fare_current && (

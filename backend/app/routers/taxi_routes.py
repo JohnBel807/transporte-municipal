@@ -215,6 +215,7 @@ async def get_driver_taxi_state(
         trip_id = await conn.fetchval(
             """SELECT id FROM particular_trips
                WHERE driver_id=$1 AND status IN ('aceptado','esperando','en_curso')
+                 AND requested_at > NOW() - INTERVAL '6 hours'
                ORDER BY requested_at DESC LIMIT 1""",
             driver.driver_id)
     return {"taxi_mode": bool(d and d["taxi_mode"]),

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/apiClient'
 
@@ -63,6 +63,17 @@ export function TaxiTripPanel({
     },
     onError: (err: any) =>
       alert(err?.response?.data?.detail ?? 'Error al finalizar'),
+  })
+
+  // Si el viaje ya terminó o fue cancelado, liberar el panel
+  useEffect(() => {
+    if (trip && (trip.status === 'completado' || trip.status === 'cancelado')) onComplete()
+  }, [trip?.status])
+
+  const cancelMutation = useMutation({
+    mutationFn: () => api.patch(`/taxi/trips/${tripId}/cancel`, { reason: 'Cancelado por conductor' }),
+    onSuccess: () => onComplete(),
+    onError: (err: any) => alert(err?.response?.data?.detail ?? 'Error al cancelar'),
   })
 
   if (!trip) return (
@@ -156,6 +167,16 @@ export function TaxiTripPanel({
                      disabled:opacity-50 text-slate-950 font-semibold
                      rounded-lg text-sm transition">
           Llegué al punto de recogida
+        </button>
+      )}
+
+      {(trip.status === 'aceptado' || trip.status === 'esperando') && (
+        <button
+          disabled={cancelMutation.isPending}
+          onClick={() => { if (window.confirm('¿Cancelar este viaje?')) cancelMutation.mutate() }}
+          className="w-full py-2 text-xs border border-red-500/30 text-red-400
+                     rounded-lg hover:bg-red-500/10 disabled:opacity-50 transition">
+          Cancelar viaje
         </button>
       )}
 

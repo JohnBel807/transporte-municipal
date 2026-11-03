@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_pool
 from app.core.dependencies import get_current_driver, DriverContext
-from app.core.geo import parse_polygon, point_in_polygon
+from app.core.geo import parse_polygon, point_in_polygon, distance_to_polygon_km
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/taxi", tags=["taxi"])
@@ -56,16 +56,25 @@ class TripRating(BaseModel):
 # ── Utilidades ────────────────────────────────────────────────────────────────
 
 async def find_fare_zone(conn, o_lat, o_lng, d_lat, d_lng):
-    """Zona de tarifa fija (decreto) si origen y destino caen dentro del mismo polígono."""
+    """Devuelve (zona, km_fuera) o (None, 0).
+    - Origen y destino dentro del mismo polígono: tarifa fija, km_fuera = 0.
+    - Uno dentro y el otro fuera: tarifa fija + km desde el punto externo hasta el borde.
+    """
     if abs(o_lat - d_lat) < 1e-6 and abs(o_lng - d_lng) < 1e-6:
-        return None  # destino no definido
+        return None, 0.0  # destino no definido
     rows = await conn.fetch(
         "SELECT * FROM fare_zones WHERE is_active ORDER BY priority DESC")
-    for z in rows:
-        poly = parse_polygon(z["polygon"])
+    polys = [(z, parse_polygon(z["polygon"])) for z in rows]
+    for z, poly in polys:
         if point_in_polygon(o_lat, o_lng, poly) and point_in_polygon(d_lat, d_lng, poly):
-            return z
-    return None
+            return z, 0.0
+    for z, poly in polys:
+        o_in = point_in_polygon(o_lat, o_lng, poly)
+        d_in = point_in_polygon(d_lat, d_lng, poly)
+        if o_in != d_in:
+            out_lat, out_lng = (d_lat, d_lng) if o_in else (o_lat, o_lng)
+            return z, distance_to_polygon_km(out_lat, out_lng, poly)
+    return None, 0.0
 
 
 async def find_municipality(conn, lat, lng):
@@ -289,11 +298,13 @@ async def request_trip(
             config=config,
         )
 
-        fz = await find_fare_zone(conn, body.origin_lat, body.origin_lng,
-                                  body.dest_lat, body.dest_lng)
+        fz, km_out = await find_fare_zone(conn, body.origin_lat, body.origin_lng,
+                                          body.dest_lat, body.dest_lng)
         fare_fixed = None
         if fz:
             fare_fixed = float(fz["fixed_fare"])
+            if km_out > 0:
+                fare_fixed += km_out * float(config["price_per_km_paved"])
             if fz["allow_surcharges"]:
                 fare_fixed += est_fare["fare_surcharges"]
             est_fare = apply_fixed(est_fare, fare_fixed)

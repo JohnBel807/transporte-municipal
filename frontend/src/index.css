@@ -2,6 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Tema: modo claro por defecto en :root, modo oscuro con la clase .dark ──
+   Las clases existentes (bg-slate-900, text-slate-400, text-teal-400…) leen estas variables,
+   así toda la app se adapta sin reescribir cada componente. */
+:root {
+  --slate-50: 2 6 23;     --slate-100: 15 23 42;  --slate-200: 30 41 59;
+  --slate-300: 51 65 85;  --slate-400: 71 85 105; --slate-500: 100 116 139;
+  --slate-600: 203 213 225; --slate-700: 226 232 240; --slate-800: 241 245 249;
+  --slate-900: 255 255 255; --slate-950: 248 250 252;
+  --teal-300: 15 118 110; --teal-400: 13 148 136; --teal-500: 15 118 110;
+  --red-300: 153 27 27;   --red-400: 185 28 28;   --red-500: 220 38 38;
+  --amber-400: 180 83 9;  --amber-500: 217 119 6;
+  --sheet-shadow: 0 -8px 30px rgb(15 23 42 / 0.12);
+  color-scheme: light;
+}
+.dark {
+  --slate-50: 248 250 252; --slate-100: 241 245 249; --slate-200: 226 232 240;
+  --slate-300: 203 213 225; --slate-400: 148 163 184; --slate-500: 100 116 139;
+  --slate-600: 71 85 105;  --slate-700: 51 65 85;   --slate-800: 30 41 59;
+  --slate-900: 15 23 42;   --slate-950: 2 6 23;
+  --teal-300: 94 234 212;  --teal-400: 45 212 191;  --teal-500: 20 184 166;
+  --red-300: 252 165 165;  --red-400: 248 113 113;  --red-500: 239 68 68;
+  --amber-400: 251 191 36; --amber-500: 245 158 11;
+  --sheet-shadow: 0 -8px 30px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
-.leaflet-container { width: 100%; height: 100%; border-radius: 0.75rem; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: rgb(var(--slate-950));
+  color: rgb(var(--slate-100));
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* Los textos "white" son blancos en oscuro y casi negros en claro */
+:root:not(.dark) .text-white,
+:root:not(.dark) .hover\:text-white:hover { color: rgb(15 23 42); }
+
+/* Mapa */
+.leaflet-container { width: 100%; height: 100%; border-radius: 0; background: rgb(var(--slate-950)); }
+.dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.7); }
+
+/* Apariencia nativa */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-top { padding-top: env(safe-area-inset-top); }
+.sheet-shadow { box-shadow: var(--sheet-shadow); }
+button, a { touch-action: manipulation; }

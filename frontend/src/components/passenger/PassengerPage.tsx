@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { useAuthStore } from '../../store/authStore'
+import { AppHeader } from '../ui/AppHeader'
+import { BottomSheet, SheetSnap } from '../ui/BottomSheet'
+import { BottomNav } from '../ui/BottomNav'
+import { SettingsPanel } from '../ui/SettingsPanel'
 
 const API = import.meta.env.VITE_API_URL ?? 'https://api.velezyricaurte.com'
 
@@ -108,9 +112,10 @@ function DestPicker({ enabled, onPick }: { enabled: boolean; onPick: (lat: numbe
 
 export function PassengerPage() {
   const navigate    = useNavigate()
-  const { isAuthenticated, user } = useAuthStore()
+  const { isAuthenticated, user, logout } = useAuthStore()
 
-  const [tab, setTab]             = useState<'colectivos' | 'taxi'>('colectivos')
+  const [tab, setTab]             = useState<'colectivos' | 'taxi' | 'ajustes'>('colectivos')
+  const [sheetSnap, setSheetSnap] = useState<SheetSnap>('half')
   const [routes, setRoutes]       = useState<ActiveRoute[]>([])
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null)
   const [waypoints, setWaypoints] = useState<Waypoint[]>([])
@@ -413,48 +418,18 @@ export function PassengerPage() {
 
   const selectedRouteData = routes.find(r => r.route_id === selectedRoute)
 
+  // Expande el panel cuando hay un viaje en curso
+  useEffect(() => { if (taxiStep !== 'form') setSheetSnap(prev => prev === 'peek' ? 'half' : prev) }, [taxiStep])
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col"
-         style={{ height: '100dvh' }}>
+    <div className="bg-slate-950 text-white flex flex-col" style={{ height: '100dvh' }}>
 
-      {/* Header */}
-      <header className="bg-slate-900 border-b border-slate-800 px-4 py-3
-                         flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2.5">
-          <img src="/logo-veri.png" alt="VERI Logo" className="w-8 h-8 object-contain rounded-lg" />
-          <div>
-          <h1 className="text-sm font-semibold">VERI</h1>
-            <p className="text-xs text-slate-500">Vélez &amp; Ricaurte</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-semibold px-2 py-1 rounded-full border
-            ${routes.length > 0
-              ? 'text-teal-400 bg-teal-400/10 border-teal-400/30'
-              : 'text-slate-500 bg-slate-800 border-slate-700'}`}>
-            {statusBadge}
-          </span>
-          {isAuthenticated ? (
-            <button
-              onClick={() => navigate(user?.role === 'conductor' ? '/conductor' : '/dashboard')}
-              className="text-xs px-2 py-1 text-teal-400 border border-teal-500/30
-                         rounded-lg hover:bg-teal-500/10 transition">
-              Mi panel
-            </button>
-          ) : (
-            <button
-              onClick={() => navigate('/login')}
-              className="text-xs px-2 py-1 text-slate-400 border border-slate-700
-                         rounded-lg hover:bg-slate-800 transition">
-              Ingresar
-            </button>
-          )}
-        </div>
-      </header>
+      <AppHeader badge={statusBadge} live={routes.length > 0} />
 
+      <div className="relative flex-1 min-h-0">
       {/* Mapa */}
-      <div style={{ height: '210px', flexShrink: 0 }}>
+      <div className="absolute inset-0 z-0">
         <MapContainer
           center={passengerPos ?? [5.9333, -73.6167]}
           zoom={13}
@@ -525,26 +500,19 @@ export function PassengerPage() {
         </MapContainer>
       </div>
 
-      {/* Panel inferior */}
-      <div className="flex-1 bg-slate-900 border-t border-slate-800
-                    flex flex-col overflow-hidden">
-
-        {/* Tabs */}
-        <div className="flex border-b border-slate-800 shrink-0">
-          {(['colectivos', 'taxi'] as const).map(t => (
-            <button key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 text-xs font-semibold transition
-                border-b-2 ${tab === t
-                  ? 'text-teal-400 border-teal-400'
-                  : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
-              {t === 'colectivos' ? '🚌 Colectivos' : '🚕 Taxi'}
-            </button>
-          ))}
-        </div>
-
-        {/* Contenido */}
-        <div className="flex-1 overflow-y-auto">
+      {/* Bottom sheet flotante */}
+      <BottomSheet snap={sheetSnap} onSnapChange={setSheetSnap}>
+        <div>
+          {tab === 'ajustes' && (
+            <SettingsPanel
+              isAuthenticated={isAuthenticated}
+              userName={(user as any)?.full_name ?? (user as any)?.name}
+              role={user?.role}
+              onGoPanel={() => navigate(user?.role === 'conductor' ? '/conductor' : '/dashboard')}
+              onLogin={() => navigate('/login')}
+              onLogout={() => { logout(); navigate('/login') }}
+            />
+          )}
 
           {/* ── Pestaña Colectivos ── */}
           {tab === 'colectivos' && (
@@ -861,7 +829,11 @@ export function PassengerPage() {
             </div>
           )}
         </div>
+      </BottomSheet>
       </div>
+
+      <BottomNav active={tab === 'taxi' ? 'taxi' : tab === 'ajustes' ? 'ajustes' : 'colectivos'}
+                 onChange={t => { setTab(t); if (t !== 'ajustes' && sheetSnap === 'peek') setSheetSnap('half') }} />
     </div>
   )
 }

@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/apiClient'
 import { useAuthStore } from '../../store/authStore'
 import { useGPSTracking } from '../../hooks/useGPSTracking'
+import { VoiceControls } from './VoiceControls'
+import { speak, listenOnce, dictationSupported } from '../../hooks/useVoice'
 import { TaxiTripPanel } from './TaxiTripPanel'
 import { TaxiPendingRequests } from './TaxiPendingRequests'
 
@@ -86,6 +88,10 @@ export function DriverHomePage() {
       data.forEach((req: any) => {
         if (notifiedTrips.current.has(req.trip_id)) return
         notifiedTrips.current.add(req.trip_id)
+        speak(`Nueva solicitud de taxi. ${req.passenger_name}. Desde ${req.origin_address || 'origen sin nombre'}. `
+          + `Hacia ${req.dest_address || 'destino sin nombre'}. `
+          + (req.estimated_fare?.fare_total ? `Tarifa estimada ${req.estimated_fare.fare_total} pesos.` : ''),
+          { interrupt: true })
         
         // Notificación push del navegador (removido 'vibrate' para evitar error de tipos)
         if (Notification.permission === 'granted') {
@@ -194,6 +200,33 @@ export function DriverHomePage() {
     enabled:          !!activeRoute,
     refetchInterval: activeRoute ? 8_000 : false,
   })
+
+  // ── Voz: leer mensajes y reservas nuevas ─────────────────────────────────
+  const seenMsgs = useRef<Set<string> | null>(null)
+  const seenRes  = useRef<Set<string> | null>(null)
+  const [listening, setListening] = useState(false)
+
+  useEffect(() => {
+    if (!activeRoute) { seenMsgs.current = null; return }
+    const ids = new Set(messages.map(m => m.id))
+    if (seenMsgs.current === null) { seenMsgs.current = ids; return }  // primera carga: no leer
+    messages.forEach(m => {
+      if (seenMsgs.current!.has(m.id)) return
+      seenMsgs.current!.add(m.id)
+      if (m.sender !== 'conductor') speak(`Mensaje de un pasajero: ${m.message}`)
+    })
+  }, [messages, activeRoute])
+
+  useEffect(() => {
+    if (!activeRoute) { seenRes.current = null; return }
+    const ids = new Set(reservations.map((r: Reservation) => r.id))
+    if (seenRes.current === null) { seenRes.current = ids; return }
+    reservations.forEach((r: Reservation) => {
+      if (seenRes.current!.has(r.id)) return
+      seenRes.current!.add(r.id)
+      speak(`Nueva reserva de ${r.passenger_name}, ${r.seats} ${r.seats === 1 ? 'asiento' : 'asientos'}`)
+    })
+  }, [reservations, activeRoute])
 
   // Query estado modo taxi
   const { data: driverStatus } = useQuery({
@@ -328,6 +361,7 @@ export function DriverHomePage() {
       </header>
 
       <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+        <VoiceControls />
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl
@@ -539,6 +573,27 @@ export function DriverHomePage() {
                       replyMutation.mutate(replyText.trim())
                   }}
                 />
+                {dictationSupported && (
+                  <button
+                    disabled={listening || replyMutation.isPending}
+                    onClick={async () => {
+                      setListening(true)
+                      try {
+                        const text = await listenOnce()
+                        if (text) {
+                          replyMutation.mutate(text.slice(0, 140))
+                          speak('Mensaje enviado', { interrupt: true })
+                        }
+                      } catch (e: any) {
+                        speak(e?.message ?? 'No se pudo dictar', { interrupt: true })
+                      } finally { setListening(false) }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs border transition
+                      ${listening ? 'bg-red-500/20 border-red-500/50 text-red-300 animate-pulse'
+                                  : 'bg-slate-700 border-slate-600 text-slate-200'}`}>
+                    {listening ? '🎙️ Escuchando…' : '🎙️ Dictar'}
+                  </button>
+                )}
                 <button
                   disabled={!replyText.trim() || replyMutation.isPending}
                   onClick={() => replyMutation.mutate(replyText.trim())}

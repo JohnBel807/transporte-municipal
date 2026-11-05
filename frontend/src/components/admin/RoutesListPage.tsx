@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../services/apiClient'
+import { RouteEditModal } from './RouteEditModal'
 
 interface Route {
   id:                   string
@@ -33,6 +34,7 @@ export function RoutesListPage() {
   const queryClient = useQueryClient()
   const [filter, setFilter]   = useState<string>('all')
   const [search, setSearch]   = useState('')
+  const [editId, setEditId]   = useState<string | null>(null)
   const [confirm, setConfirm] = useState<{ id: string; name: string; action: string } | null>(null)
 
   const { data: routes = [], isLoading } = useQuery<Route[]>({
@@ -52,6 +54,12 @@ export function RoutesListPage() {
       setConfirm(null)
       queryClient.invalidateQueries({ queryKey: ['admin-routes'] })
     },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/routes/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-routes'] }),
+    onError: (e: any) => alert(e?.response?.data?.detail ?? 'No se pudo eliminar la ruta'),
   })
 
   const filtered = routes.filter(r =>
@@ -190,9 +198,27 @@ export function RoutesListPage() {
                   </div>
                 </div>
 
+                {/* Acciones de administración */}
+                <div className="pt-3 border-t border-slate-800 flex gap-2 flex-wrap">
+                  <button onClick={() => setEditId(route.id)}
+                    className="px-4 py-1.5 text-xs text-teal-400 border border-teal-500/30 rounded-lg hover:bg-teal-500/10 transition">
+                    ✎ Editar
+                  </button>
+                  <button
+                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      if (route.status === 'activa') { alert('Pausa la ruta antes de eliminarla'); return }
+                      if (window.confirm(`¿Eliminar definitivamente "${route.route_name}"?\nSi la ruta ya tiene historial de viajes, deberás archivarla.`))
+                        deleteMutation.mutate(route.id)
+                    }}
+                    className="px-4 py-1.5 text-xs text-red-400 border border-red-500/30 rounded-lg hover:bg-red-500/10 disabled:opacity-40 transition">
+                    🗑 Eliminar
+                  </button>
+                </div>
+
                 {/* Acciones */}
                 {route.status !== 'archivada' && (
-                  <div className="pt-3 border-t border-slate-800 flex gap-2">
+                  <div className="pt-3 flex gap-2">
                     {route.status === 'activa' && (
                       confirm?.id === route.id ? (
                         <div className="flex gap-2 w-full">
@@ -247,6 +273,7 @@ export function RoutesListPage() {
           })}
         </div>
       </div>
+      {editId && <RouteEditModal routeId={editId} onClose={() => setEditId(null)} />}
     </div>
   )
 }

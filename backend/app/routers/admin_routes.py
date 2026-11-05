@@ -2,6 +2,7 @@ import asyncio
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from asyncpg import Pool
+import asyncpg
 from app.core.database import get_pool
 from app.core.dependencies import get_current_admin, DriverContext
 from app.core import webhooks
@@ -466,3 +467,133 @@ async def set_taxi_municipality(
     if res.endswith("0"):
         raise HTTPException(status_code=404, detail="Conductor no encontrado")
     return {"driver_id": driver_id, "taxi_municipality": muni}
+
+# ── Edición y borrado de rutas (admin) ───────────────────────────────────────
+
+class AdminWaypoint(BaseModel):
+    place_name: str = Field(min_length=1, max_length=120)
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    is_terminal: bool = False
+    estimated_wait_min: int = Field(default=0, ge=0, le=120)
+
+
+class AdminRouteUpdate(BaseModel):
+    route_name: str = Field(min_length=3, max_length=120)
+    description: str = Field(default="", max_length=300)
+    base_fare: float = Field(ge=0)
+    estimated_duration_min: int = Field(ge=1, le=600)
+    tolerance_m: int = Field(default=300, ge=50, le=2000)
+    waypoints: list[AdminWaypoint] | None = None  # None = no tocar las paradas
+
+
+@router.get("/routes/{route_id}")
+async def get_route_detail(route_id: str, pool: Pool = Depends(get_pool)) -> dict:
+    async with pool.acquire() as conn:
+        r = await conn.fetchrow(
+            """SELECT cr.id, cr.route_name, cr.description, cr.base_fare,
+                      cr.estimated_duration_min, cr.status, cr.is_public,
+                      COALESCE(rc.tolerance_m, 300) AS tolerance_m,
+                      u.full_name AS driver_name
+               FROM colectivo_routes cr
+               JOIN drivers d ON d.id = cr.driver_id
+               JOIN users u ON u.id = d.user_id
+               LEFT JOIN route_corridors rc ON rc.route_id = cr.id
+               WHERE cr.id = $1""", route_id)
+        if not r:
+            raise HTTPException(status_code=404, detail="Ruta no encontrada")
+        wps = await conn.fetch(
+            """SELECT sequence_order, place_name, latitude, longitude,
+                      is_terminal, estimated_wait_min
+               FROM route_waypoints WHERE route_id=$1 ORDER BY sequence_order""", route_id)
+    d = dict(r)
+    d["id"] = str(d["id"])
+    d["base_fare"] = float(d["base_fare"])
+    d["waypoints"] = [dict(w) for w in wps]
+    return d
+
+
+@router.put("/routes/{route_id}")
+async def update_route(
+    route_id: str,
+    body: AdminRouteUpdate,
+    pool: Pool = Depends(get_pool),
+    admin: DriverContext = Depends(get_current_admin),
+) -> dict:
+    wps = body.waypoints
+    if wps is not None:
+        if len(wps) < 2 or not wps[0].is_terminal or not wps[-1].is_terminal:
+            raise HTTPException(status_code=422,
+                detail="La ruta necesita al menos 2 paradas y la primera y la última deben ser terminales")
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                route = await conn.fetchrow(
+                    "SELECT id, status FROM colectivo_routes WHERE id=$1 FOR UPDATE", route_id)
+                if not route:
+                    raise HTTPException(status_code=404, detail="Ruta no encontrada")
+                if wps is not None and route["status"] == "activa":
+                    raise HTTPException(status_code=409,
+                        detail="Pausa la ruta antes de modificar sus paradas")
+                await conn.execute(
+                    """UPDATE colectivo_routes
+                       SET route_name=$2, description=$3, base_fare=$4,
+                           estimated_duration_min=$5, updated_at=NOW()
+                       WHERE id=$1""",
+                    route_id, body.route_name, body.description, body.base_fare,
+                    body.estimated_duration_min)
+                if wps is not None:
+                    old_ids = [r["id"] for r in await conn.fetch(
+                        "SELECT id FROM route_waypoints WHERE route_id=$1", route_id)]
+                    await conn.execute(
+                        "UPDATE route_live_state SET next_waypoint_id=NULL WHERE route_id=$1", route_id)
+                    await conn.execute(
+                        "DELETE FROM passenger_route_subscriptions WHERE route_id=$1", route_id)
+                    await conn.execute("DELETE FROM route_waypoints WHERE id = ANY($1::uuid[])", old_ids)
+                    for i, w in enumerate(wps):
+                        await conn.execute(
+                            """INSERT INTO route_waypoints
+                               (route_id, sequence_order, place_name, latitude, longitude,
+                                is_terminal, estimated_wait_min)
+                               VALUES ($1,$2,$3,$4,$5,$6,$7)""",
+                            route_id, i, w.place_name, w.latitude, w.longitude,
+                            w.is_terminal, w.estimated_wait_min)
+                    await conn.execute("SELECT rebuild_route_corridor($1, $2)",
+                                       route_id, body.tolerance_m)
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=409, detail="Ya existe una ruta con ese nombre")
+    except asyncpg.ForeignKeyViolationError:
+        raise HTTPException(status_code=409,
+            detail="Las paradas tienen datos asociados y no se pueden reemplazar")
+    return {"route_id": route_id, "updated": True}
+
+
+@router.delete("/routes/{route_id}")
+async def delete_route(
+    route_id: str,
+    pool: Pool = Depends(get_pool),
+    admin: DriverContext = Depends(get_current_admin),
+) -> dict:
+    """Elimina una ruta sin historial. Si ya tuvo viajes, hay que archivarla."""
+    async with pool.acquire() as conn:
+        route = await conn.fetchrow(
+            "SELECT id, status, route_name FROM colectivo_routes WHERE id=$1", route_id)
+        if not route:
+            raise HTTPException(status_code=404, detail="Ruta no encontrada")
+        if route["status"] == "activa":
+            raise HTTPException(status_code=409, detail="Pausa la ruta antes de eliminarla")
+        try:
+            async with conn.transaction():
+                for table in ("seat_reservations", "route_messages", "route_schedules",
+                              "passenger_route_subscriptions"):
+                    try:
+                        async with conn.transaction():
+                            await conn.execute(f"DELETE FROM {table} WHERE route_id=$1", route_id)
+                    except (asyncpg.UndefinedTableError, asyncpg.UndefinedColumnError):
+                        pass
+                await conn.execute("DELETE FROM route_live_state WHERE route_id=$1", route_id)
+                await conn.execute("DELETE FROM colectivo_routes WHERE id=$1", route_id)
+        except asyncpg.ForeignKeyViolationError:
+            raise HTTPException(status_code=409,
+                detail="La ruta tiene historial de viajes y no se puede eliminar. Archívala en su lugar.")
+    return {"deleted": route_id, "route_name": route["route_name"]}

@@ -7,6 +7,7 @@ import { AppHeader } from '../ui/AppHeader'
 import { BottomSheet, SheetSnap } from '../ui/BottomSheet'
 import { BottomNav } from '../ui/BottomNav'
 import { SettingsPanel } from '../ui/SettingsPanel'
+import { ReservationBox } from './ReservationBox'
 
 const API = import.meta.env.VITE_API_URL ?? 'https://api.velezyricaurte.com'
 
@@ -607,6 +608,15 @@ export function PassengerPage() {
                       )}
                     </div>
                   ))}
+
+                  {/* Reserva de puesto */}
+                  <ReservationBox
+                    routeId={selectedRoute}
+                    routeName={selectedRouteData?.route_name}
+                    seatsAvailable={selectedRouteData?.seats_available ?? 0}
+                    baseFare={selectedRouteData ? Number((selectedRouteData as any).base_fare) : undefined}
+                    pickup={passengerPos}
+                  />
 
                   {/* Mensajes */}
                   <div className="px-4 py-3 border-t border-slate-800">

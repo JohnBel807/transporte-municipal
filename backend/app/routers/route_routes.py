@@ -7,6 +7,7 @@ from asyncpg import Pool
 import asyncpg
 from app.core.database import get_pool
 from app.core.dependencies import get_current_driver, DriverContext
+from app.routers.passenger_auth_routes import optional_passenger_id
 from app.models.routes import (
     RouteCreate, RouteCreateResponse, WaypointResponse,
     ActivateRouteResponse, RouteStatus,
@@ -844,6 +845,7 @@ async def create_reservation(
     body: ReservationCreate,
     background_tasks: BackgroundTasks,
     pool: Pool = Depends(get_pool),
+    passenger_id: str | None = Depends(optional_passenger_id),
 ) -> dict:
     async with pool.acquire() as conn:
         route = await conn.fetchrow(
@@ -865,15 +867,26 @@ async def create_reservation(
             raise HTTPException(status_code=422,
                 detail=f"Solo hay {seats_available} puesto(s) disponibles")
 
+        # Si el pasajero tiene cuenta, el nombre sale de su cuenta.
+        passenger_name = body.passenger_name
+        if passenger_id:
+            full_name = await conn.fetchval(
+                "SELECT full_name FROM users WHERE id = $1 AND role = 'pasajero'",
+                passenger_id,
+            )
+            if full_name:
+                passenger_name = full_name
+
         reservation = await conn.fetchrow(
             """INSERT INTO seat_reservations
                (route_id, passenger_name, seats, pickup_lat,
-                pickup_lng, pickup_note)
-               VALUES ($1,$2,$3,$4,$5,$6)
+                pickup_lng, pickup_note, passenger_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7)
                RETURNING id, passenger_name, seats, status,
                          pickup_lat, pickup_lng, pickup_note, created_at""",
-            route_id, body.passenger_name, body.seats,
+            route_id, passenger_name, body.seats,
             body.pickup_lat, body.pickup_lng, body.pickup_note,
+            passenger_id,
         )
 
         driver_info = await conn.fetchrow(
@@ -890,7 +903,7 @@ async def create_reservation(
             "type":           "new_reservation",
             "route_id":       route_id,
             "reservation_id": str(reservation["id"]),
-            "passenger_name": body.passenger_name,
+            "passenger_name": passenger_name,
             "seats":          body.seats,
             "pickup_note":    body.pickup_note or "",
             "pickup_lat":     body.pickup_lat,
@@ -907,7 +920,7 @@ async def create_reservation(
             background_tasks.add_task(
                 webhooks.emit_reserva_creada,
                 reserva_id      = str(reservation["id"]),
-                passenger_name  = body.passenger_name,
+                passenger_name  = passenger_name,
                 seats           = body.seats,
                 pickup_lat      = body.pickup_lat,
                 pickup_lng      = body.pickup_lng,
@@ -932,7 +945,6 @@ async def create_reservation(
         "expires_at":     reservation["created_at"].isoformat(),
         "message":        f"Reserva confirmada para {body.seats} puesto(s). El conductor fue notificado.",
     }
-
 
 # ── Horarios de ruta ──────────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ from app.core.database import get_pool, close_database
 from app.core.config import settings
 from app.routers import auth_routes, route_routes, ws_routes, admin_routes
 from app.routers import taxi_routes, fare_zones_routes, template_routes
+from app.routers import passenger_auth_routes, metrics_routes
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level, logging.INFO),
@@ -47,6 +48,8 @@ app.include_router(admin_routes.router)
 app.include_router(taxi_routes.router)
 app.include_router(fare_zones_routes.router)
 app.include_router(template_routes.router)
+app.include_router(passenger_auth_routes.router)
+app.include_router(metrics_routes.router)
 
 @app.get("/health", tags=["sistema"])
 async def health() -> dict:

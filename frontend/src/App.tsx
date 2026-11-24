@@ -13,6 +13,8 @@ import { DriverSchedulePage }  from './components/driver/DriverSchedulePage'
 import { RoutesListPage }      from './components/admin/RoutesListPage'
 import { PassengerPage }       from './components/passenger/PassengerPage'
 import { FareZonesPage }       from './components/admin/FareZonesPage'
+import { DocumentsPage }    from './components/admin/DocumentsPage'
+import { SupportInboxPage } from './components/admin/SupportInboxPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 2, staleTime: 0 } },
@@ -47,6 +49,8 @@ export default function App() {
           <Route path="/drivers/new" element={<RequireAuth><DriverRegisterPage /></RequireAuth>}/>
           <Route path="/routes"    element={<RequireAuth><RoutesListPage /></RequireAuth>}/>
           <Route path="/fare-zones" element={<RequireAuth><FareZonesPage /></RequireAuth>}/>
+          <Route path="/documents" element={<RequireAuth><DocumentsPage /></RequireAuth>}/>
+          <Route path="/support"   element={<RequireAuth><SupportInboxPage /></RequireAuth>}/>
           <Route path="/history"   element={<RequireAuth><TripHistoryPage /></RequireAuth>}/>
 
           {/* Conductor */}

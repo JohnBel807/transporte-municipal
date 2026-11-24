@@ -1,5 +1,6 @@
 import { useThemeStore } from '../../store/themeStore'
 import { PassengerAccountBox } from '../passenger/PassengerAccountBox'
+import { SupportReportBox } from '../passenger/SupportReportBox'
 
 interface Props {
   isAuthenticated: boolean
@@ -61,6 +62,9 @@ export function SettingsPanel({ isAuthenticated, userName, role, onGoPanel, onLo
         <span className="text-slate-300">VERI · Vélez &amp; Ricaurte</span>
         <span className="text-xs text-slate-500">Transporte municipal</span>
       </div>
+
+      {/* Botón / caja de reporte del pasajero */}
+      <SupportReportBox />
     </div>
   )
 }

@@ -1,138 +1,139 @@
-"""Monitoreo de documentos de conductores para el administrador.
-
-Licencia -> drivers.license_expiry
-SOAT y tecnomecanica -> vehiculo activo (vehicles.soat_expiry, vehicles.tecnomecanica_expiry)
-
-El estado se calcula a nivel de fecha; un dia de diferencia a medianoche es irrelevante
-para documentos.
-"""
-from datetime import date, timedelta
+"""Bandeja de soporte: los usuarios reportan (publico) y el admin gestiona."""
+import uuid
 from typing import Optional
 
 from asyncpg import Pool
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.database import get_pool
 from app.core.dependencies import get_current_admin
 
-router = APIRouter(
-    prefix="/admin/documents",
-    tags=["admin-documentos"],
+CATEGORIES = {"tarifa", "conductor", "seguridad", "app", "otro"}
+STATUSES   = {"abierto", "en_proceso", "resuelto", "cerrado"}
+
+# Endpoint publico (lo usa cualquier pasajero, sin iniciar sesion)
+public_router = APIRouter(prefix="/support", tags=["soporte"])
+
+# Endpoints de administracion (requieren admin)
+admin_router = APIRouter(
+    prefix="/admin/support",
+    tags=["admin-soporte"],
     dependencies=[Depends(get_current_admin)],
 )
 
-_RANK = {"vencido": 0, "sin_dato": 1, "por_vencer": 2, "vigente": 3}
+
+class ReportCreate(BaseModel):
+    reporter_name:  Optional[str] = Field(default=None, max_length=60)
+    reporter_phone: Optional[str] = Field(default=None, max_length=20)
+    trip_id:        Optional[str] = None
+    category:       str = Field(default="otro")
+    message:        str = Field(min_length=3, max_length=1000)
 
 
-def _status(expiry: Optional[date], today: date, warn_days: int) -> str:
-    if expiry is None:
-        return "sin_dato"
-    if expiry < today:
-        return "vencido"
-    if expiry <= today + timedelta(days=warn_days):
-        return "por_vencer"
-    return "vigente"
+@public_router.post("/reports", status_code=201)
+async def create_report(body: ReportCreate, pool: Pool = Depends(get_pool)) -> dict:
+    category = body.category if body.category in CATEGORIES else "otro"
 
+    trip_uuid = None
+    if body.trip_id:
+        try:
+            trip_uuid = str(uuid.UUID(body.trip_id))
+        except ValueError:
+            trip_uuid = None  # un trip_id invalido no bloquea el reporte
 
-def _doc(expiry: Optional[date], today: date, warn_days: int) -> dict:
-    st = _status(expiry, today, warn_days)
-    days_left = (expiry - today).days if expiry is not None else None
+    async with pool.acquire() as conn:
+        ticket = await conn.fetchrow(
+            """INSERT INTO support_tickets
+               (reporter_name, reporter_phone, trip_id, category, message)
+               VALUES ($1, $2, $3, $4, $5)
+               RETURNING id, created_at""",
+            (body.reporter_name or "").strip() or None,
+            (body.reporter_phone or "").strip() or None,
+            trip_uuid, category, body.message.strip(),
+        )
+
     return {
-        "expiry": expiry.isoformat() if expiry else None,
-        "status": st,
-        "days_left": days_left,
+        "id": str(ticket["id"]),
+        "status": "abierto",
+        "message": "Gracias. Recibimos tu reporte y lo revisaremos.",
     }
 
 
-@router.get("")
-async def list_documents(
-    warn_days: int = Query(default=30, ge=1, le=180),
-    only: Optional[str] = Query(default=None, description="'problem' = solo vencidos/por vencer/sin dato"),
+@admin_router.get("")
+async def list_tickets(
+    status: Optional[str] = Query(default=None),
     pool: Pool = Depends(get_pool),
 ) -> dict:
-    today = date.today()
+    if status is not None and status not in STATUSES:
+        raise HTTPException(status_code=422, detail="Estado invalido")
+
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT d.id AS driver_id, u.full_name, u.phone,
-                      d.driver_type, d.license_expiry,
-                      v.id AS vehicle_id, v.plate,
-                      v.soat_expiry, v.tecnomecanica_expiry
-               FROM drivers d
-               JOIN users u ON u.id = d.user_id
-               LEFT JOIN vehicles v ON v.driver_id = d.id AND v.is_active
-               ORDER BY u.full_name"""
+            """SELECT id, reporter_name, reporter_phone, trip_id, category,
+                      message, status, admin_note, created_at, updated_at
+               FROM support_tickets
+               WHERE ($1::text IS NULL OR status = $1)
+               ORDER BY
+                   CASE status
+                       WHEN 'abierto'    THEN 1
+                       WHEN 'en_proceso' THEN 2
+                       WHEN 'resuelto'   THEN 3
+                       WHEN 'cerrado'    THEN 4
+                   END,
+                   created_at DESC
+               LIMIT 200""",
+            status,
+        )
+        counts = await conn.fetch(
+            "SELECT status, COUNT(*) AS n FROM support_tickets GROUP BY status"
         )
 
-    drivers = []
-    counters = {"vencido": 0, "por_vencer": 0, "sin_dato": 0, "vigente": 0}
-    for r in rows:
-        docs = {
-            "licencia":      _doc(r["license_expiry"], today, warn_days),
-            "soat":          _doc(r["soat_expiry"], today, warn_days),
-            "tecnomecanica": _doc(r["tecnomecanica_expiry"], today, warn_days),
-        }
-        overall = min((d["status"] for d in docs.values()), key=lambda s: _RANK[s])
-        counters[overall] = counters.get(overall, 0) + 1
-        if only == "problem" and overall == "vigente":
-            continue
-        drivers.append({
-            "driver_id":   str(r["driver_id"]),
-            "full_name":   r["full_name"],
-            "phone":       r["phone"],
-            "driver_type": r["driver_type"],
-            "plate":       r["plate"],
-            "vehicle_id":  str(r["vehicle_id"]) if r["vehicle_id"] else None,
-            "overall":     overall,
-            "documents":   docs,
-        })
+    summary = {s: 0 for s in STATUSES}
+    for c in counts:
+        summary[c["status"]] = c["n"]
 
-    return {"warn_days": warn_days, "summary": counters, "drivers": drivers}
+    def _ticket(r) -> dict:
+        d = dict(r)
+        d["id"] = str(d["id"])
+        d["trip_id"] = str(d["trip_id"]) if d["trip_id"] else None
+        d["created_at"] = d["created_at"].isoformat()
+        d["updated_at"] = d["updated_at"].isoformat()
+        return d
+
+    return {"summary": summary, "tickets": [_ticket(r) for r in rows]}
 
 
-class DocumentUpdate(BaseModel):
-    license_expiry:       Optional[date] = None
-    soat_expiry:          Optional[date] = None
-    tecnomecanica_expiry: Optional[date] = None
+class TicketUpdate(BaseModel):
+    status:     Optional[str] = None
+    admin_note: Optional[str] = Field(default=None, max_length=1000)
 
 
-@router.patch("/{driver_id}")
-async def update_documents(
-    driver_id: str,
-    body: DocumentUpdate,
+@admin_router.patch("/{ticket_id}")
+async def update_ticket(
+    ticket_id: str,
+    body: TicketUpdate,
     pool: Pool = Depends(get_pool),
 ) -> dict:
     sent = body.model_dump(exclude_unset=True)
     if not sent:
-        raise HTTPException(status_code=422, detail="No enviaste ninguna fecha")
+        raise HTTPException(status_code=422, detail="Nada que actualizar")
+    if "status" in sent and sent["status"] not in STATUSES:
+        raise HTTPException(status_code=422, detail="Estado invalido")
 
     async with pool.acquire() as conn:
-        drv = await conn.fetchrow("SELECT id FROM drivers WHERE id = $1", driver_id)
-        if not drv:
-            raise HTTPException(status_code=404, detail="Conductor no encontrado")
+        row = await conn.fetchrow(
+            """UPDATE support_tickets
+               SET status     = COALESCE($2, status),
+                   admin_note = COALESCE($3, admin_note),
+                   updated_at = NOW()
+               WHERE id = $1
+               RETURNING id, status, admin_note""",
+            ticket_id,
+            sent.get("status"),
+            sent.get("admin_note"),
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado")
 
-        if "license_expiry" in sent:
-            await conn.execute(
-                "UPDATE drivers SET license_expiry = $2 WHERE id = $1",
-                driver_id, sent["license_expiry"],
-            )
-
-        veh_fields = {k: v for k, v in sent.items()
-                      if k in ("soat_expiry", "tecnomecanica_expiry")}
-        if veh_fields:
-            vehicle_id = await conn.fetchval(
-                "SELECT id FROM vehicles WHERE driver_id = $1 AND is_active LIMIT 1",
-                driver_id,
-            )
-            if not vehicle_id:
-                raise HTTPException(
-                    status_code=404,
-                    detail="El conductor no tiene vehiculo activo para SOAT/tecnomecanica",
-                )
-            for col, val in veh_fields.items():
-                await conn.execute(
-                    f"UPDATE vehicles SET {col} = $2 WHERE id = $1",  # col es de lista fija
-                    vehicle_id, val,
-                )
-
-    return {"driver_id": driver_id, "updated": list(sent.keys())}
+    return {"id": str(row["id"]), "status": row["status"], "admin_note": row["admin_note"]}
